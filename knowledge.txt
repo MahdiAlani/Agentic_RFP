@@ -1,0 +1,17 @@
+ACME Corp Information Security and Compliance Policy
+Effective Date: January 1, 2026
+
+1. Data Encryption and Protection
+All customer data processed by ACME Corp is classified as Highly Confidential. To ensure the integrity and privacy of this data, ACME Corp employs strong encryption standards. Data at rest is encrypted using AES-256 bit encryption across all database instances and object storage buckets (Amazon S3). Data in transit is secured using TLS 1.3 for all external communications and API endpoints. We do not support TLS 1.0 or 1.1 under any circumstances. Cryptographic keys are managed via AWS Key Management Service (KMS), with key rotation strictly enforced every 90 days. 
+
+2. Access Control and Identity Management
+Access to production systems, source code, and customer data is governed by the Principle of Least Privilege (PoLP). All employees must authenticate using Single Sign-On (SSO) backed by Okta, and Multi-Factor Authentication (MFA) is enforced globally via hardware tokens (YubiKey) or biometric verification. No employee has default access to production databases. Engineers requiring access to production environments must request temporary, time-bound credentials via our zero-trust teleportation service, which automatically revokes access after 4 hours. Access logs are immutable and stored in Datadog for 365 days. Access reviews are conducted manually by the compliance team on a quarterly basis.
+
+3. Incident Response and Monitoring
+ACME Corp maintains a 24/7/365 Security Operations Center (SOC). Our standard Service Level Agreement (SLA) dictates that critical security incidents (Severity 1) must be acknowledged within 15 minutes, with remediation efforts beginning immediately. In the event of a confirmed data breach involving customer Personally Identifiable Information (PII), ACME Corp is legally obligated to notify all impacted customers and relevant regulatory bodies within 72 hours of discovery. We utilize CrowdStrike Falcon for endpoint detection and response (EDR) on all employee workstations.
+
+4. Business Continuity and Disaster Recovery (BCDR)
+To ensure high availability, ACME Corp’s infrastructure is distributed across three independent AWS Availability Zones within the us-east-1 region. Our Disaster Recovery Plan outlines a Recovery Time Objective (RTO) of 4 hours and a Recovery Point Objective (RPO) of 1 hour. Database backups are performed continuously using Write-Ahead Logs (WAL), with full snapshot backups taken daily at 02:00 UTC. Backups are retained for 30 days and are stored in a geographically isolated AWS region (us-west-2) to protect against region-wide outages. Disaster recovery failover tests are conducted bi-annually.
+
+5. Third-Party Vendor Management
+ACME Corp conducts rigorous security assessments of all third-party subprocessors before onboarding. Any vendor that processes or stores ACME Corp customer data must maintain an active SOC 2 Type II certification and ISO 27001 compliance. Vendor audits are reviewed annually by our internal GRC (Governance, Risk, and Compliance) team.

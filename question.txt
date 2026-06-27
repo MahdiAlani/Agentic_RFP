@@ -1,0 +1,5 @@
+1. How does your organization secure customer data both at rest and in transit? Please specify the algorithms used.
+2. If a data breach occurs, how quickly will our team be notified?
+3. What is your Recovery Time Objective (RTO) and Recovery Point Objective (RPO) in the event of a catastrophic system failure?
+4. Do engineers have permanent access to the production databases?
+5.Does ACME corp offer a bug bounty program?
