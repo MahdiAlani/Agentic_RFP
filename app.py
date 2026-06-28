@@ -1,6 +1,6 @@
 from openai import OpenAI
 
-client = OpenAI(api_key="OPENAI_API_KEY")
+client = OpenAI(api_key="key")
 
 # Read knowledge base
 with open("knowledge.txt") as file:
