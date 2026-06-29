@@ -18,17 +18,17 @@ func NewService(repo Repository) Service {
 }
 
 func (s *service) GetUser(ctx context.Context, id int) (*User, error) {
-	panic("not implemented")
+	return s.repo.GetByID(ctx, id)
 }
 
 func (s *service) CreateUser(ctx context.Context, email, name string) (*User, error) {
-	panic("not implemented")
+	return s.repo.Create(ctx, &User{Email: email, Name: name})
 }
 
 func (s *service) UpdateUser(ctx context.Context, id int, email, name string) (*User, error) {
-	panic("not implemented")
+	return s.repo.Update(ctx, &User{ID: id, Email: email, Name: name})
 }
 
 func (s *service) DeleteUser(ctx context.Context, id int) error {
-	panic("not implemented")
+	return s.repo.Delete(ctx, id)
 }
