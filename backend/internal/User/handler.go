@@ -78,6 +78,13 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(u)
 }
 
+func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /users/{id}", h.GetUser)
+	mux.HandleFunc("POST /users", h.CreateUser)
+	mux.HandleFunc("PUT /users/{id}", h.UpdateUser)
+	mux.HandleFunc("DELETE /users/{id}", h.DeleteUser)
+}
+
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
