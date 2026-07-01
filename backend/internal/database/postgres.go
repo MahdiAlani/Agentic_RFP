@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -15,7 +14,10 @@ type DB struct {
 }
 
 func Connect(ctx context.Context) (*DB, error) {
-	dsn := dsn()
+	dsn, err := dsn()
+	if err != nil {
+		return nil, err
+	}
 
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -44,22 +46,37 @@ func (db *DB) Close() {
 	db.Pool.Close()
 }
 
-func dsn() string {
+func dsn() (string, error) {
 	if url := os.Getenv("DATABASE_URL"); url != "" {
-		return url
+		return url, nil
 	}
-	host := getenv("POSTGRES_HOST")
-	port := getenv("POSTGRES_PORT")
-	user := getenv("POSTGRES_USER")
-	pass := getenv("POSTGRES_PASSWORD")
-	name := getenv("POSTGRES_DB")
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s", user, pass, host, port, name)
+	host, err := getenv("POSTGRES_HOST")
+	if err != nil {
+		return "", err
+	}
+	port, err := getenv("POSTGRES_PORT")
+	if err != nil {
+		return "", err
+	}
+	user, err := getenv("POSTGRES_USER")
+	if err != nil {
+		return "", err
+	}
+	pass, err := getenv("POSTGRES_PASSWORD")
+	if err != nil {
+		return "", err
+	}
+	name, err := getenv("POSTGRES_DB")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s", user, pass, host, port, name), nil
 }
 
-func getenv(key string) string {
+func getenv(key string) (string, error) {
 	v := os.Getenv(key)
-    if v == "" {
-        log.Fatalf("CONFIG ERROR: Environment variable %s is not set", key)
-    }
-    return v
+	if v == "" {
+		return "", fmt.Errorf("required environment variable %s is not set", key)
+	}
+	return v, nil
 }
