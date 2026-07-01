@@ -1,6 +1,21 @@
 package user
 
-import "context"
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/mail"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+var (
+	ErrNotFound     = errors.New("user not found")
+	ErrInvalidInput = errors.New("invalid input")
+	ErrConflict     = errors.New("email already exists")
+)
 
 type Service interface {
 	GetUser(ctx context.Context, id int) (*User, error)
@@ -18,17 +33,67 @@ func NewService(repo Repository) Service {
 }
 
 func (s *service) GetUser(ctx context.Context, id int) (*User, error) {
-	return s.repo.GetByID(ctx, id)
+	u, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	return u, nil
 }
 
 func (s *service) CreateUser(ctx context.Context, email, name string) (*User, error) {
-	return s.repo.Create(ctx, &User{Email: email, Name: name})
+	email, name, err := validate(email, name)
+	if err != nil {
+		return nil, err
+	}
+	u, err := s.repo.Create(ctx, &User{Email: email, Name: name})
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	return u, nil
 }
 
 func (s *service) UpdateUser(ctx context.Context, id int, email, name string) (*User, error) {
-	return s.repo.Update(ctx, &User{ID: id, Email: email, Name: name})
+	email, name, err := validate(email, name)
+	if err != nil {
+		return nil, err
+	}
+	u, err := s.repo.Update(ctx, &User{ID: id, Email: email, Name: name})
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	return u, nil
 }
 
 func (s *service) DeleteUser(ctx context.Context, id int) error {
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return mapDBError(err)
+	}
+	return nil
+}
+
+// validate trims and checks the user-supplied fields, returning the cleaned
+// values or an ErrInvalidInput-wrapped error describing what was wrong.
+func validate(email, name string) (string, string, error) {
+	email = strings.TrimSpace(email)
+	name = strings.TrimSpace(name)
+	if email == "" || name == "" {
+		return "", "", fmt.Errorf("%w: email and name are required", ErrInvalidInput)
+	}
+	if _, err := mail.ParseAddress(email); err != nil {
+		return "", "", fmt.Errorf("%w: malformed email address", ErrInvalidInput)
+	}
+	return email, name, nil
+}
+
+// mapDBError translates storage-layer errors into the package's sentinel
+// errors so callers (and the HTTP layer) stay decoupled from pgx.
+func mapDBError(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+		return ErrConflict
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
 }

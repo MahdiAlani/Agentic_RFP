@@ -3,6 +3,8 @@ package user
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5"
+
 	"rfp-agent/internal/database"
 )
 
@@ -69,6 +71,12 @@ func (r *postgresRepo) Update(ctx context.Context, u *User) (*User, error) {
 }
 
 func (r *postgresRepo) Delete(ctx context.Context, id int) error {
-	_, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
-	return err
+	tag, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
