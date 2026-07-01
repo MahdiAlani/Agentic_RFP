@@ -8,6 +8,7 @@ import (
 	"rfp-agent/internal/database"
 )
 
+// User repo
 type Repository interface {
 	GetByID(ctx context.Context, id int) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
@@ -15,15 +16,17 @@ type Repository interface {
 	Update(ctx context.Context, u *User) (*User, error)
 	Delete(ctx context.Context, id int) error
 }
-
+// db
 type postgresRepo struct {
 	db *database.DB
 }
 
+// Repo constructor
 func NewRepository(db *database.DB) Repository {
 	return &postgresRepo{db: db}
 }
 
+// Gets a User using ID
 func (r *postgresRepo) GetByID(ctx context.Context, id int) (*User, error) {
 	u := &User{}
 	err := r.db.Pool.QueryRow(ctx,
@@ -35,6 +38,7 @@ func (r *postgresRepo) GetByID(ctx context.Context, id int) (*User, error) {
 	return u, nil
 }
 
+// Gets a user using Email address
 func (r *postgresRepo) GetByEmail(ctx context.Context, email string) (*User, error) {
 	u := &User{}
 	err := r.db.Pool.QueryRow(ctx,
@@ -46,6 +50,7 @@ func (r *postgresRepo) GetByEmail(ctx context.Context, email string) (*User, err
 	return u, nil
 }
 
+// Creates a new user
 func (r *postgresRepo) Create(ctx context.Context, u *User) (*User, error) {
 	created := &User{}
 	err := r.db.Pool.QueryRow(ctx,
@@ -58,6 +63,7 @@ func (r *postgresRepo) Create(ctx context.Context, u *User) (*User, error) {
 	return created, nil
 }
 
+// Updates a user's data
 func (r *postgresRepo) Update(ctx context.Context, u *User) (*User, error) {
 	updated := &User{}
 	err := r.db.Pool.QueryRow(ctx,
@@ -70,6 +76,7 @@ func (r *postgresRepo) Update(ctx context.Context, u *User) (*User, error) {
 	return updated, nil
 }
 
+// Deletes a user from the db
 func (r *postgresRepo) Delete(ctx context.Context, id int) error {
 	tag, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
 	if err != nil {

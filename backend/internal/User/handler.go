@@ -16,6 +16,7 @@ func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// mux to handle the endpoints
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /users/{id}", h.GetUser)
 	mux.HandleFunc("POST /users", h.CreateUser)
@@ -25,6 +26,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
+	// Was not an int
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return

@@ -11,12 +11,14 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// Error helper
 var (
 	ErrNotFound     = errors.New("user not found")
 	ErrInvalidInput = errors.New("invalid input")
 	ErrConflict     = errors.New("email already exists")
 )
 
+// Endpoints
 type Service interface {
 	GetUser(ctx context.Context, id int) (*User, error)
 	CreateUser(ctx context.Context, email, name string) (*User, error)
@@ -24,10 +26,12 @@ type Service interface {
 	DeleteUser(ctx context.Context, id int) error
 }
 
+// Repo service
 type service struct {
 	repo Repository
 }
 
+// Initializes a new repo service
 func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
