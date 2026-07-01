@@ -5,11 +5,14 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/joho/godotenv"
 	"rfp-agent/internal/database"
 	user "rfp-agent/internal/User"
 )
 
 func main() {
+	godotenv.Load("../../.env")
+
 	ctx := context.Background()
 
 	db, err := database.Connect(ctx)
