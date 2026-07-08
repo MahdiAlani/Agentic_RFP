@@ -8,6 +8,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"rfp-agent/internal/database"
+	"rfp-agent/internal/project"
 	user "rfp-agent/internal/user"
 	"rfp-agent/internal/workspace"
 )
@@ -31,9 +32,14 @@ func main() {
 	wsSvc := workspace.NewService(wsRepo)
 	wsHandler := workspace.NewHandler(wsSvc)
 
+	projRepo := project.NewRepository(db)
+	projSvc := project.NewService(projRepo)
+	projHandler := project.NewHandler(projSvc)
+
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 	wsHandler.RegisterRoutes(mux)
+	projHandler.RegisterRoutes(mux)
 
 	srv := &http.Server{
 		Addr:         ":8080",
