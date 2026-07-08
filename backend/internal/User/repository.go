@@ -6,15 +6,17 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"rfp-agent/internal/database"
+
+	"github.com/google/uuid"
 )
 
 // User repo
 type Repository interface {
-	GetByID(ctx context.Context, id int) (*User, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	Create(ctx context.Context, u *User) (*User, error)
 	Update(ctx context.Context, u *User) (*User, error)
-	Delete(ctx context.Context, id int) error
+	Delete(ctx context.Context, id uuid.UUID) error
 }
 // db
 type postgresRepo struct {
@@ -27,7 +29,7 @@ func NewRepository(db *database.DB) Repository {
 }
 
 // Gets a User using ID
-func (r *postgresRepo) GetByID(ctx context.Context, id int) (*User, error) {
+func (r *postgresRepo) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	u := &User{}
 	err := r.db.Pool.QueryRow(ctx,
 		`SELECT id, email, name, created_at FROM users WHERE id = $1`, id,
@@ -54,8 +56,8 @@ func (r *postgresRepo) GetByEmail(ctx context.Context, email string) (*User, err
 func (r *postgresRepo) Create(ctx context.Context, u *User) (*User, error) {
 	created := &User{}
 	err := r.db.Pool.QueryRow(ctx,
-		`INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id, email, name, created_at`,
-		u.Email, u.Name,
+		`INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING id, email, name, created_at`,
+		u.Email, u.Name, u.PasswordHash,
 	).Scan(&created.ID, &created.Email, &created.Name, &created.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -77,7 +79,7 @@ func (r *postgresRepo) Update(ctx context.Context, u *User) (*User, error) {
 }
 
 // Deletes a user from the db
-func (r *postgresRepo) Delete(ctx context.Context, id int) error {
+func (r *postgresRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	tag, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
 	if err != nil {
 		return err
