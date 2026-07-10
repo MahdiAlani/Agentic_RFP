@@ -23,8 +23,8 @@ var (
 type Service interface {
 	Getdocument(ctx context.Context, id uuid.UUID) (*document, error)
 	Listdocuments(ctx context.Context, workspaceID uuid.UUID) ([]*document, error)
-	Createdocument(ctx context.Context, workspaceID uuid.UUID, name string) (*document, error)
-	Updatedocument(ctx context.Context, id uuid.UUID, name string) (*document, error)
+	Createdocument(ctx context.Context, workspaceID uuid.UUID, fileName, fileKey, documentType string) (*document, error)
+	Updatedocument(ctx context.Context, id uuid.UUID, fileName, documentType string) (*document, error)
 	Deletedocument(ctx context.Context, id uuid.UUID) error
 }
 
@@ -54,24 +54,33 @@ func (s *service) Listdocuments(ctx context.Context, workspaceID uuid.UUID) ([]*
 	return ws, nil
 }
 
-func (s *service) Createdocument(ctx context.Context, workspaceID uuid.UUID, name string) (*document, error) {
-	name, err := validate(workspaceID, name)
+func (s *service) Createdocument(ctx context.Context, workspaceID uuid.UUID, fileName, fileKey, documentType string) (*document, error) {
+	fileName, fileKey, documentType, err := validate(workspaceID, fileName, fileKey, documentType)
 	if err != nil {
 		return nil, err
 	}
-	w, err := s.repo.Create(ctx, &document{WorkspaceID: workspaceID, Name: name})
+	w, err := s.repo.Create(ctx, &document{
+		WorkspaceID:  workspaceID,
+		FileName:     fileName,
+		FileKey:      fileKey,
+		DocumentType: documentType,
+	})
 	if err != nil {
 		return nil, mapDBError(err)
 	}
 	return w, nil
 }
 
-func (s *service) Updatedocument(ctx context.Context, id uuid.UUID, name string) (*document, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, fmt.Errorf("%w: name is required", ErrInvalidInput)
+func (s *service) Updatedocument(ctx context.Context, id uuid.UUID, fileName, documentType string) (*document, error) {
+	fileName = strings.TrimSpace(fileName)
+	documentType = strings.TrimSpace(documentType)
+	if fileName == "" {
+		return nil, fmt.Errorf("%w: file_name is required", ErrInvalidInput)
 	}
-	w, err := s.repo.Update(ctx, &document{ID: id, Name: name})
+	if documentType == "" {
+		return nil, fmt.Errorf("%w: document_type is required", ErrInvalidInput)
+	}
+	w, err := s.repo.Update(ctx, &document{ID: id, FileName: fileName, DocumentType: documentType})
 	if err != nil {
 		return nil, mapDBError(err)
 	}
@@ -87,15 +96,23 @@ func (s *service) Deletedocument(ctx context.Context, id uuid.UUID) error {
 
 // validate trims and checks the document-supplied fields, returning the cleaned
 // name or an ErrInvalidInput-wrapped error describing what was wrong.
-func validate(workspaceID uuid.UUID, name string) (string, error) {
-	name = strings.TrimSpace(name)
+func validate(workspaceID uuid.UUID, fileName, fileKey, documentType string) (string, string, string, error) {
+	fileName = strings.TrimSpace(fileName)
+	fileKey = strings.TrimSpace(fileKey)
+	documentType = strings.TrimSpace(documentType)
 	if workspaceID == uuid.Nil {
-		return "", fmt.Errorf("%w: workspace_id is required", ErrInvalidInput)
+		return "", "", "", fmt.Errorf("%w: workspace_id is required", ErrInvalidInput)
 	}
-	if name == "" {
-		return "", fmt.Errorf("%w: name is required", ErrInvalidInput)
+	if fileName == "" {
+		return "", "", "", fmt.Errorf("%w: file_name is required", ErrInvalidInput)
 	}
-	return name, nil
+	if fileKey == "" {
+		return "", "", "", fmt.Errorf("%w: file_key is required", ErrInvalidInput)
+	}
+	if documentType == "" {
+		return "", "", "", fmt.Errorf("%w: document_type is required", ErrInvalidInput)
+	}
+	return fileName, fileKey, documentType, nil
 }
 
 // mapDBError translates storage-layer errors into the package's sentinel
