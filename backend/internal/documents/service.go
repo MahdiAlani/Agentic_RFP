@@ -23,8 +23,8 @@ var (
 type Service interface {
 	Getdocument(ctx context.Context, id uuid.UUID) (*document, error)
 	Listdocuments(ctx context.Context, workspaceID uuid.UUID) ([]*document, error)
-	Createdocument(ctx context.Context, workspaceID uuid.UUID, fileName, fileKey, documentType string) (*document, error)
-	Updatedocument(ctx context.Context, id uuid.UUID, fileName, documentType string) (*document, error)
+	Createdocument(ctx context.Context, workspaceID uuid.UUID, projectID *uuid.UUID, fileName, fileKey, documentType string) (*document, error)
+	Updatedocument(ctx context.Context, id uuid.UUID, projectID *uuid.UUID, fileName, documentType, status string) (*document, error)
 	Deletedocument(ctx context.Context, id uuid.UUID) error
 }
 
@@ -54,13 +54,14 @@ func (s *service) Listdocuments(ctx context.Context, workspaceID uuid.UUID) ([]*
 	return ws, nil
 }
 
-func (s *service) Createdocument(ctx context.Context, workspaceID uuid.UUID, fileName, fileKey, documentType string) (*document, error) {
+func (s *service) Createdocument(ctx context.Context, workspaceID uuid.UUID, projectID *uuid.UUID, fileName, fileKey, documentType string) (*document, error) {
 	fileName, fileKey, documentType, err := validate(workspaceID, fileName, fileKey, documentType)
 	if err != nil {
 		return nil, err
 	}
 	w, err := s.repo.Create(ctx, &document{
 		WorkspaceID:  workspaceID,
+		ProjectID:    projectID,
 		FileName:     fileName,
 		FileKey:      fileKey,
 		DocumentType: documentType,
@@ -71,16 +72,26 @@ func (s *service) Createdocument(ctx context.Context, workspaceID uuid.UUID, fil
 	return w, nil
 }
 
-func (s *service) Updatedocument(ctx context.Context, id uuid.UUID, fileName, documentType string) (*document, error) {
+func (s *service) Updatedocument(ctx context.Context, id uuid.UUID, projectID *uuid.UUID, fileName, documentType, status string) (*document, error) {
 	fileName = strings.TrimSpace(fileName)
 	documentType = strings.TrimSpace(documentType)
+	status = strings.TrimSpace(status)
 	if fileName == "" {
 		return nil, fmt.Errorf("%w: file_name is required", ErrInvalidInput)
 	}
 	if documentType == "" {
 		return nil, fmt.Errorf("%w: document_type is required", ErrInvalidInput)
 	}
-	w, err := s.repo.Update(ctx, &document{ID: id, FileName: fileName, DocumentType: documentType})
+	if status == "" {
+		return nil, fmt.Errorf("%w: status is required", ErrInvalidInput)
+	}
+	w, err := s.repo.Update(ctx, &document{
+		ID:           id,
+		ProjectID:    projectID,
+		FileName:     fileName,
+		DocumentType: documentType,
+		Status:       status,
+	})
 	if err != nil {
 		return nil, mapDBError(err)
 	}

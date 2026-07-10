@@ -61,17 +61,18 @@ func (h *Handler) Listdocuments(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Createdocument(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		WorkspaceID  uuid.UUID `json:"workspace_id"`
-		FileName     string    `json:"file_name"`
-		FileKey      string    `json:"file_key"`
-		DocumentType string    `json:"document_type"`
+		WorkspaceID  uuid.UUID  `json:"workspace_id"`
+		ProjectID    *uuid.UUID `json:"project_id"`
+		FileName     string     `json:"file_name"`
+		FileKey      string     `json:"file_key"`
+		DocumentType string     `json:"document_type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 
-	ws, err := h.svc.Createdocument(r.Context(), body.WorkspaceID, body.FileName, body.FileKey, body.DocumentType)
+	ws, err := h.svc.Createdocument(r.Context(), body.WorkspaceID, body.ProjectID, body.FileName, body.FileKey, body.DocumentType)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -88,15 +89,17 @@ func (h *Handler) Updatedocument(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		FileName     string `json:"file_name"`
-		DocumentType string `json:"document_type"`
+		ProjectID    *uuid.UUID `json:"project_id"`
+		FileName     string     `json:"file_name"`
+		DocumentType string     `json:"document_type"`
+		Status       string     `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 
-	ws, err := h.svc.Updatedocument(r.Context(), id, body.FileName, body.DocumentType)
+	ws, err := h.svc.Updatedocument(r.Context(), id, body.ProjectID, body.FileName, body.DocumentType, body.Status)
 	if err != nil {
 		writeError(w, r, err)
 		return

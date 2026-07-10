@@ -33,8 +33,8 @@ func NewRepository(db *database.DB) Repository {
 func (r *postgresRepo) GetByID(ctx context.Context, id uuid.UUID) (*document, error) {
 	d := &document{}
 	err := r.db.Pool.QueryRow(ctx,
-		`SELECT id, workspace_id, file_name, file_key, document_type, created_at FROM documents WHERE id = $1`, id,
-	).Scan(&d.ID, &d.WorkspaceID, &d.FileName, &d.FileKey, &d.DocumentType, &d.CreatedAt)
+		`SELECT id, workspace_id, project_id, file_name, file_key, document_type, status, created_at FROM documents WHERE id = $1`, id,
+	).Scan(&d.ID, &d.WorkspaceID, &d.ProjectID, &d.FileName, &d.FileKey, &d.DocumentType, &d.Status, &d.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (r *postgresRepo) GetByID(ctx context.Context, id uuid.UUID) (*document, er
 // Gets documents for a workspace
 func (r *postgresRepo) GetByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]*document, error) {
 	rows, err := r.db.Pool.Query(ctx,
-		`SELECT id, workspace_id, file_name, file_key, document_type, created_at FROM documents WHERE workspace_id = $1`, workspaceID,
+		`SELECT id, workspace_id, project_id, file_name, file_key, document_type, status, created_at FROM documents WHERE workspace_id = $1`, workspaceID,
 	)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func (r *postgresRepo) GetByWorkspaceID(ctx context.Context, workspaceID uuid.UU
 	var documents []*document
 	for rows.Next() {
 		d := &document{}
-		if err := rows.Scan(&d.ID, &d.WorkspaceID, &d.FileName, &d.FileKey, &d.DocumentType, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.WorkspaceID, &d.ProjectID, &d.FileName, &d.FileKey, &d.DocumentType, &d.Status, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		documents = append(documents, d)
@@ -70,9 +70,9 @@ func (r *postgresRepo) GetByWorkspaceID(ctx context.Context, workspaceID uuid.UU
 func (r *postgresRepo) Create(ctx context.Context, u *document) (*document, error) {
 	created := &document{}
 	err := r.db.Pool.QueryRow(ctx,
-		`INSERT INTO documents (workspace_id, file_name, file_key, document_type) VALUES ($1, $2, $3, $4) RETURNING id, workspace_id, file_name, file_key, document_type, created_at`,
-		u.WorkspaceID, u.FileName, u.FileKey, u.DocumentType,
-	).Scan(&created.ID, &created.WorkspaceID, &created.FileName, &created.FileKey, &created.DocumentType, &created.CreatedAt)
+		`INSERT INTO documents (workspace_id, project_id, file_name, file_key, document_type) VALUES ($1, $2, $3, $4, $5) RETURNING id, workspace_id, project_id, file_name, file_key, document_type, status, created_at`,
+		u.WorkspaceID, u.ProjectID, u.FileName, u.FileKey, u.DocumentType,
+	).Scan(&created.ID, &created.WorkspaceID, &created.ProjectID, &created.FileName, &created.FileKey, &created.DocumentType, &created.Status, &created.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -83,9 +83,9 @@ func (r *postgresRepo) Create(ctx context.Context, u *document) (*document, erro
 func (r *postgresRepo) Update(ctx context.Context, u *document) (*document, error) {
 	updated := &document{}
 	err := r.db.Pool.QueryRow(ctx,
-		`UPDATE documents SET file_name = $1, document_type = $2 WHERE id = $3 RETURNING id, workspace_id, file_name, file_key, document_type, created_at`,
-		u.FileName, u.DocumentType, u.ID,
-	).Scan(&updated.ID, &updated.WorkspaceID, &updated.FileName, &updated.FileKey, &updated.DocumentType, &updated.CreatedAt)
+		`UPDATE documents SET file_name = $1, document_type = $2, status = $3, project_id = $4 WHERE id = $5 RETURNING id, workspace_id, project_id, file_name, file_key, document_type, status, created_at`,
+		u.FileName, u.DocumentType, u.Status, u.ProjectID, u.ID,
+	).Scan(&updated.ID, &updated.WorkspaceID, &updated.ProjectID, &updated.FileName, &updated.FileKey, &updated.DocumentType, &updated.Status, &updated.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
