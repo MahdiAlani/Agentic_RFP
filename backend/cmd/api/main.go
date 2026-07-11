@@ -9,6 +9,7 @@ import (
 	"github.com/joho/godotenv"
 	"rfp-agent/internal/database"
 	"rfp-agent/internal/project"
+	"rfp-agent/internal/storage"
 	user "rfp-agent/internal/user"
 	"rfp-agent/internal/workspace"
 )
@@ -23,6 +24,11 @@ func main() {
 		log.Fatalf("connect to db: %v", err)
 	}
 	defer db.Close()
+
+	st, err := storage.New(ctx)
+	if err != nil {
+		log.Fatalf("connect to storage: %v", err)
+	}
 
 	repo := user.NewRepository(db)
 	svc := user.NewService(repo)
