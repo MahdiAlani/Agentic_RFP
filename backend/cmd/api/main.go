@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"rfp-agent/internal/answers"
 	"rfp-agent/internal/database"
 	"rfp-agent/internal/documents"
 	"rfp-agent/internal/project"
@@ -54,11 +55,16 @@ func main() {
 	docSvc := documents.NewService(docRepo, st, q)
 	docHandler := documents.NewHandler(docSvc)
 
+	ansRepo := answers.NewRepository(db)
+	ansSvc := answers.NewService(ansRepo, q)
+	ansHandler := answers.NewHandler(ansSvc)
+
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 	wsHandler.RegisterRoutes(mux)
 	projHandler.RegisterRoutes(mux)
 	docHandler.RegisterRoutes(mux)
+	ansHandler.RegisterRoutes(mux)
 
 	srv := &http.Server{
 		Addr:         ":8080",
