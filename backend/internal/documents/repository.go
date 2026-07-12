@@ -1,4 +1,4 @@
-package document
+package documents
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 type Repository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*document, error)
 	GetByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]*document, error)
-	Create(ctx context.Context, u *document) (*document, error)
-	Update(ctx context.Context, u *document) (*document, error)
+	Create(ctx context.Context, d *document) (*document, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*document, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -49,7 +49,6 @@ func (r *postgresRepo) GetByWorkspaceID(ctx context.Context, workspaceID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	// Close connection
 	defer rows.Close()
 
 	var documents []*document
@@ -66,12 +65,14 @@ func (r *postgresRepo) GetByWorkspaceID(ctx context.Context, workspaceID uuid.UU
 	return documents, nil
 }
 
-// Creates a new document
-func (r *postgresRepo) Create(ctx context.Context, u *document) (*document, error) {
+// Creates a new document with a server-generated id (needed up front to build the file_key)
+func (r *postgresRepo) Create(ctx context.Context, d *document) (*document, error) {
 	created := &document{}
 	err := r.db.Pool.QueryRow(ctx,
-		`INSERT INTO documents (workspace_id, project_id, file_name, file_key, document_type) VALUES ($1, $2, $3, $4, $5) RETURNING id, workspace_id, project_id, file_name, file_key, document_type, status, created_at`,
-		u.WorkspaceID, u.ProjectID, u.FileName, u.FileKey, u.DocumentType,
+		`INSERT INTO documents (id, workspace_id, project_id, file_name, file_key, document_type, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 RETURNING id, workspace_id, project_id, file_name, file_key, document_type, status, created_at`,
+		d.ID, d.WorkspaceID, d.ProjectID, d.FileName, d.FileKey, d.DocumentType, d.Status,
 	).Scan(&created.ID, &created.WorkspaceID, &created.ProjectID, &created.FileName, &created.FileKey, &created.DocumentType, &created.Status, &created.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -79,12 +80,13 @@ func (r *postgresRepo) Create(ctx context.Context, u *document) (*document, erro
 	return created, nil
 }
 
-// Updates a document's data
-func (r *postgresRepo) Update(ctx context.Context, u *document) (*document, error) {
+// Updates a document's status (pending -> uploaded, etc.)
+func (r *postgresRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*document, error) {
 	updated := &document{}
 	err := r.db.Pool.QueryRow(ctx,
-		`UPDATE documents SET file_name = $1, document_type = $2, status = $3, project_id = $4 WHERE id = $5 RETURNING id, workspace_id, project_id, file_name, file_key, document_type, status, created_at`,
-		u.FileName, u.DocumentType, u.Status, u.ProjectID, u.ID,
+		`UPDATE documents SET status = $1 WHERE id = $2
+		 RETURNING id, workspace_id, project_id, file_name, file_key, document_type, status, created_at`,
+		status, id,
 	).Scan(&updated.ID, &updated.WorkspaceID, &updated.ProjectID, &updated.FileName, &updated.FileKey, &updated.DocumentType, &updated.Status, &updated.CreatedAt)
 	if err != nil {
 		return nil, err

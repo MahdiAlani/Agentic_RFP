@@ -1,4 +1,4 @@
-package document
+package documents
 
 import (
 	"encoding/json"
@@ -19,103 +19,114 @@ func NewHandler(svc Service) *Handler {
 
 // mux to handle the endpoints
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /documents/{id}", h.Getdocument)
-	mux.HandleFunc("GET /workspaces/{workspaceID}/documents", h.Listdocuments)
-	mux.HandleFunc("POST /documents", h.Createdocument)
-	mux.HandleFunc("PUT /documents/{id}", h.Updatedocument)
-	mux.HandleFunc("DELETE /documents/{id}", h.Deletedocument)
+	mux.HandleFunc("POST /documents", h.CreateDocument)
+	mux.HandleFunc("POST /documents/{id}/confirm", h.ConfirmUpload)
+	mux.HandleFunc("GET /documents/{id}", h.GetDocument)
+	mux.HandleFunc("GET /documents/{id}/download", h.DownloadURL)
+	mux.HandleFunc("GET /workspaces/{workspaceID}/documents", h.ListDocuments)
+	mux.HandleFunc("DELETE /documents/{id}", h.DeleteDocument)
 }
 
-func (h *Handler) Getdocument(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	// Was not a UUID
-	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+type createResponse struct {
+	*document
+	UploadURL string `json:"upload_url"`
+}
+
+func (h *Handler) CreateDocument(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WorkspaceID  uuid.UUID  `json:"workspace_id"`
+		ProjectID    *uuid.UUID `json:"project_id"`
+		FileName     string     `json:"file_name"`
+		DocumentType string     `json:"document_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 
-	ws, err := h.svc.Getdocument(r.Context(), id)
+	doc, uploadURL, err := h.svc.CreateDocument(r.Context(), body.WorkspaceID, body.ProjectID, body.FileName, body.DocumentType)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ws)
+	writeJSON(w, http.StatusCreated, createResponse{document: doc, UploadURL: uploadURL})
 }
 
-func (h *Handler) Listdocuments(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ConfirmUpload(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	doc, err := h.svc.ConfirmUpload(r.Context(), id)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, doc)
+}
+
+func (h *Handler) GetDocument(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	doc, err := h.svc.GetDocument(r.Context(), id)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, doc)
+}
+
+func (h *Handler) DownloadURL(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	url, err := h.svc.DownloadURL(r.Context(), id)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, struct {
+		DownloadURL string `json:"download_url"`
+	}{DownloadURL: url})
+}
+
+func (h *Handler) ListDocuments(w http.ResponseWriter, r *http.Request) {
 	workspaceID, err := uuid.Parse(r.PathValue("workspaceID"))
 	if err != nil {
 		http.Error(w, "invalid workspace id", http.StatusBadRequest)
 		return
 	}
 
-	ws, err := h.svc.Listdocuments(r.Context(), workspaceID)
+	docs, err := h.svc.ListDocuments(r.Context(), workspaceID)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ws)
+	writeJSON(w, http.StatusOK, docs)
 }
 
-func (h *Handler) Createdocument(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		WorkspaceID  uuid.UUID  `json:"workspace_id"`
-		ProjectID    *uuid.UUID `json:"project_id"`
-		FileName     string     `json:"file_name"`
-		FileKey      string     `json:"file_key"`
-		DocumentType string     `json:"document_type"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid body", http.StatusBadRequest)
-		return
-	}
-
-	ws, err := h.svc.Createdocument(r.Context(), body.WorkspaceID, body.ProjectID, body.FileName, body.FileKey, body.DocumentType)
-	if err != nil {
-		writeError(w, r, err)
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, ws)
-}
-
-func (h *Handler) Updatedocument(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) DeleteDocument(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
 
-	var body struct {
-		ProjectID    *uuid.UUID `json:"project_id"`
-		FileName     string     `json:"file_name"`
-		DocumentType string     `json:"document_type"`
-		Status       string     `json:"status"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid body", http.StatusBadRequest)
-		return
-	}
-
-	ws, err := h.svc.Updatedocument(r.Context(), id, body.ProjectID, body.FileName, body.DocumentType, body.Status)
-	if err != nil {
-		writeError(w, r, err)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, ws)
-}
-
-func (h *Handler) Deletedocument(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
-		return
-	}
-
-	if err := h.svc.Deletedocument(r.Context(), id); err != nil {
+	if err := h.svc.DeleteDocument(r.Context(), id); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -139,6 +150,8 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, ErrInvalidInput):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	case errors.Is(err, ErrConflict):
+		http.Error(w, err.Error(), http.StatusConflict)
+	case errors.Is(err, ErrNotUploaded):
 		http.Error(w, err.Error(), http.StatusConflict)
 	default:
 		log.Printf("%s %s: %v", r.Method, r.URL.Path, err)
