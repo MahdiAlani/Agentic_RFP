@@ -1,0 +1,385 @@
+:root {
+  --paper: #f6f4ef;
+  --ink: #1b1a17;
+  --ink-soft: #6b675e;
+  --line: #d9d4c8;
+  --accent: #b4472e;
+  --panel: #1b1a17;
+  --panel-text: #e8e3d7;
+  --panel-soft: #9a9384;
+  --error: #a3341f;
+  --success: #2f6d4a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+}
+
+/* Left brand panel */
+.panel {
+  background: var(--panel);
+  color: var(--panel-text);
+  padding: 2.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.mark {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+  letter-spacing: 0.01em;
+}
+
+.panel-body h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  font-size: 2.4rem;
+  line-height: 1.15;
+  margin: 0 0 1.1rem;
+  letter-spacing: -0.01em;
+}
+
+.panel-body p {
+  color: var(--panel-soft);
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 34ch;
+  margin: 0;
+}
+
+.panel-foot {
+  color: var(--panel-soft);
+  font-size: 0.8rem;
+}
+
+/* Right form side */
+.content {
+  display: grid;
+  place-items: center;
+  padding: 2.5rem;
+}
+
+.form-wrap {
+  width: 100%;
+  max-width: 360px;
+}
+
+.form-head h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  font-size: 1.9rem;
+  margin: 0 0 0.4rem;
+}
+
+.form-head p {
+  margin: 0 0 2.25rem;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+
+.link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-soft);
+}
+
+.field input {
+  border: none;
+  border-bottom: 1.5px solid var(--line);
+  background: transparent;
+  padding: 0.4rem 0;
+  font-size: 1rem;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.field input:focus {
+  border-bottom-color: var(--accent);
+}
+
+.submit {
+  margin-top: 0.4rem;
+  padding: 0.85rem;
+  border: none;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .panel {
+    display: none;
+  }
+}
+
+/* ---------- Dashboard ---------- */
+
+.dash {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.75rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.topbar .mark {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.who {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.ghost {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.ghost:hover {
+  border-color: var(--ink-soft);
+}
+
+.dash-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+}
+
+.sidebar {
+  border-right: 1px solid var(--line);
+  padding: 1.5rem 1.25rem;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.sidebar-head h3 {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-soft);
+}
+
+.add {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ws-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ws {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.92rem;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.ws:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.ws.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.empty,
+.muted {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+
+.small {
+  font-size: 0.78rem;
+}
+
+.main {
+  padding: 2rem 2.25rem;
+}
+
+.main-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 1.75rem;
+}
+
+.main-head h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  font-size: 1.7rem;
+  margin: 0 0 0.15rem;
+}
+
+.main-head .muted {
+  margin: 0;
+}
+
+.primary {
+  border: none;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.6rem 1.05rem;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.primary:hover {
+  background: var(--accent);
+}
+
+.placeholder {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 3rem;
+  text-align: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.proj-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.1rem 1.2rem;
+  background: #fffdf8;
+  transition: border-color 0.15s;
+}
+
+.proj-card:hover {
+  border-color: var(--ink-soft);
+}
+
+.proj-card h4 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .dash-body {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+}
