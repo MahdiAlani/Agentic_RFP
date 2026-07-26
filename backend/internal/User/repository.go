@@ -40,12 +40,12 @@ func (r *postgresRepo) GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 	return u, nil
 }
 
-// Gets a user using Email address
+// Gets a user using Email address (includes password_hash for authentication)
 func (r *postgresRepo) GetByEmail(ctx context.Context, email string) (*User, error) {
 	u := &User{}
 	err := r.db.Pool.QueryRow(ctx,
-		`SELECT id, email, name, created_at FROM users WHERE email = $1`, email,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt)
+		`SELECT id, email, name, password_hash, created_at FROM users WHERE email = $1`, email,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

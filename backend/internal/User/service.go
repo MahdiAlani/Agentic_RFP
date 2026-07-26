@@ -16,15 +16,17 @@ import (
 
 // Error helper
 var (
-	ErrNotFound     = errors.New("user not found")
-	ErrInvalidInput = errors.New("invalid input")
-	ErrConflict     = errors.New("email already exists")
+	ErrNotFound           = errors.New("user not found")
+	ErrInvalidInput       = errors.New("invalid input")
+	ErrConflict           = errors.New("email already exists")
+	ErrInvalidCredentials = errors.New("invalid email or password")
 )
 
 // Endpoints
 type Service interface {
 	GetUser(ctx context.Context, id uuid.UUID) (*User, error)
 	CreateUser(ctx context.Context, email, name, password string) (*User, error)
+	Authenticate(ctx context.Context, email, password string) (*User, error)
 	UpdateUser(ctx context.Context, id uuid.UUID, email, name string) (*User, error)
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 }
@@ -62,6 +64,22 @@ func (s *service) CreateUser(ctx context.Context, email, name, password string) 
 	u, err := s.repo.Create(ctx, &User{Email: email, Name: name, PasswordHash: string(hash)})
 	if err != nil {
 		return nil, mapDBError(err)
+	}
+	return u, nil
+}
+
+// Authenticate verifies an email/password pair and returns the user on success.
+func (s *service) Authenticate(ctx context.Context, email, password string) (*User, error) {
+	email = strings.TrimSpace(email)
+	u, err := s.repo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(mapDBError(err), ErrNotFound) {
+			return nil, ErrInvalidCredentials
+		}
+		return nil, err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
+		return nil, ErrInvalidCredentials
 	}
 	return u, nil
 }
