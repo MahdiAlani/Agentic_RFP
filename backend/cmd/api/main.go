@@ -4,9 +4,11 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"rfp-agent/internal/answers"
+	"rfp-agent/internal/auth"
 	"rfp-agent/internal/database"
 	"rfp-agent/internal/documents"
 	"rfp-agent/internal/project"
@@ -22,6 +24,11 @@ func main() {
 	godotenv.Load("../.env")
 
 	ctx := context.Background()
+
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		log.Fatal("JWT_SECRET is not set")
+	}
 
 	db, err := database.Connect(ctx)
 	if err != nil {
@@ -59,12 +66,22 @@ func main() {
 	ansSvc := answers.NewService(ansRepo, q)
 	ansHandler := answers.NewHandler(ansSvc)
 
+	authHandler := auth.NewHandler(svc, secret)
+
+	// Protected routes require a valid Bearer token (checked by auth.Middleware).
+	protected := http.NewServeMux()
+	h.RegisterRoutes(protected)
+	wsHandler.RegisterRoutes(protected)
+	projHandler.RegisterRoutes(protected)
+	docHandler.RegisterRoutes(protected)
+	ansHandler.RegisterRoutes(protected)
+	authHandler.RegisterProtectedRoutes(protected)
+
+	// Public routes (login/register) sit on the root mux; everything else falls
+	// through the "/" catch-all into the auth-protected mux.
 	mux := http.NewServeMux()
-	h.RegisterRoutes(mux)
-	wsHandler.RegisterRoutes(mux)
-	projHandler.RegisterRoutes(mux)
-	docHandler.RegisterRoutes(mux)
-	ansHandler.RegisterRoutes(mux)
+	authHandler.RegisterRoutes(mux)
+	mux.Handle("/", auth.Middleware(secret)(protected))
 
 	srv := &http.Server{
 		Addr:         ":8080",
