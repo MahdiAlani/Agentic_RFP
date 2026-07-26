@@ -356,7 +356,7 @@ body {
   gap: 1rem;
 }
 
-.proj-card {
+.card {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 1.1rem 1.2rem;
@@ -364,14 +364,159 @@ body {
   transition: border-color 0.15s;
 }
 
-.proj-card:hover {
+.card:hover {
   border-color: var(--ink-soft);
 }
 
-.proj-card h4 {
+.card h4 {
   margin: 0 0 0.4rem;
   font-size: 1rem;
   font-weight: 600;
+}
+
+/* ---------- Tabs ---------- */
+
+.tabs-row {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.75rem;
+}
+
+.tab-btn {
+  border: none;
+  background: none;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab-btn.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- Panel bars ---------- */
+
+.panel-bar,
+.upload-bar,
+.ask-bar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.panel-bar {
+  justify-content: space-between;
+}
+
+.upload-bar select,
+.ask-bar input,
+.upload-bar .file-input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.9rem;
+  background: #fffdf8;
+  color: var(--ink);
+}
+
+.ask-bar input {
+  flex: 1;
+}
+
+/* ---------- Table ---------- */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table th {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.table td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.table .right {
+  text-align: right;
+}
+
+/* ---------- Status badge ---------- */
+
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  text-transform: capitalize;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink-soft);
+}
+
+.badge.pending {
+  background: #f3e6c4;
+  color: #8a6d1e;
+}
+
+.badge.uploaded,
+.badge.embedded,
+.badge.done {
+  background: #d6ecdc;
+  color: var(--success);
+}
+
+.badge.failed {
+  background: #f3d6cf;
+  color: var(--error);
+}
+
+/* ---------- Answers ---------- */
+
+.answer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.answer {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.1rem 1.2rem;
+  background: #fffdf8;
+}
+
+.answer-q {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.answer-a {
+  margin: 0.5rem 0 0;
+  line-height: 1.55;
+  color: var(--ink);
 }
 
 @media (max-width: 720px) {

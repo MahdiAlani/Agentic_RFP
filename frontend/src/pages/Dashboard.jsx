@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import {
-  listWorkspaces,
-  createWorkspace,
-  listProjects,
-  createProject,
-} from '../api'
-import { getUser, clearUser } from '../auth'
+import { listWorkspaces, createWorkspace } from '../api'
+import { getUser, clearSession } from '../auth'
+import ProjectsPanel from '../components/ProjectsPanel.jsx'
+import DocumentsPanel from '../components/DocumentsPanel.jsx'
+import AnswersPanel from '../components/AnswersPanel.jsx'
+
+const TABS = [
+  { key: 'documents', label: 'Documents' },
+  { key: 'answers', label: 'Q&A' },
+  { key: 'projects', label: 'Projects' },
+]
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -15,38 +19,23 @@ export default function Dashboard() {
 
   const [workspaces, setWorkspaces] = useState([])
   const [selected, setSelected] = useState(null)
-  const [projects, setProjects] = useState([])
-  const [loadingProjects, setLoadingProjects] = useState(false)
+  const [tab, setTab] = useState('documents')
 
-  // Load workspaces on mount.
   useEffect(() => {
-    listWorkspaces(user.id)
+    listWorkspaces()
       .then((ws) => {
         const list = ws || []
         setWorkspaces(list)
         if (list.length) setSelected(list[0])
       })
       .catch((err) => toast.error(err.message))
-  }, [user.id])
-
-  // Load projects whenever the selected workspace changes.
-  useEffect(() => {
-    if (!selected) {
-      setProjects([])
-      return
-    }
-    setLoadingProjects(true)
-    listProjects(selected.id)
-      .then((ps) => setProjects(ps || []))
-      .catch((err) => toast.error(err.message))
-      .finally(() => setLoadingProjects(false))
-  }, [selected])
+  }, [])
 
   async function handleNewWorkspace() {
     const name = window.prompt('Workspace name')
     if (!name || !name.trim()) return
     try {
-      const ws = await createWorkspace({ userID: user.id, name: name.trim() })
+      const ws = await createWorkspace({ name: name.trim() })
       setWorkspaces((prev) => [...prev, ws])
       setSelected(ws)
       toast.success(`Created “${ws.name}”`)
@@ -55,21 +44,8 @@ export default function Dashboard() {
     }
   }
 
-  async function handleNewProject() {
-    if (!selected) return
-    const name = window.prompt('Project name')
-    if (!name || !name.trim()) return
-    try {
-      const p = await createProject({ workspaceID: selected.id, name: name.trim() })
-      setProjects((prev) => [...prev, p])
-      toast.success(`Created “${p.name}”`)
-    } catch (err) {
-      toast.error(err.message)
-    }
-  }
-
   function logout() {
-    clearUser()
+    clearSession()
     navigate('/login')
   }
 
@@ -119,33 +95,24 @@ export default function Dashboard() {
           ) : (
             <>
               <div className="main-head">
-                <div>
-                  <h2>{selected.name}</h2>
-                  <p className="muted">Projects</p>
-                </div>
-                <button className="primary" onClick={handleNewProject}>
-                  New project
-                </button>
+                <h2>{selected.name}</h2>
               </div>
 
-              {loadingProjects ? (
-                <p className="muted">Loading…</p>
-              ) : projects.length === 0 ? (
-                <div className="placeholder">
-                  <p>No projects in this workspace yet.</p>
-                </div>
-              ) : (
-                <div className="grid">
-                  {projects.map((p) => (
-                    <div key={p.id} className="proj-card">
-                      <h4>{p.name}</h4>
-                      <span className="muted small">
-                        {new Date(p.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <nav className="tabs-row">
+                {TABS.map((t) => (
+                  <button
+                    key={t.key}
+                    className={tab === t.key ? 'tab-btn active' : 'tab-btn'}
+                    onClick={() => setTab(t.key)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </nav>
+
+              {tab === 'documents' && <DocumentsPanel workspace={selected} />}
+              {tab === 'answers' && <AnswersPanel workspace={selected} />}
+              {tab === 'projects' && <ProjectsPanel workspace={selected} />}
             </>
           )}
         </main>
