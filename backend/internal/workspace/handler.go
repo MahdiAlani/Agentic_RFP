@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+
+	"rfp-agent/internal/auth"
 )
 
 type Handler struct {
@@ -20,7 +22,7 @@ func NewHandler(svc Service) *Handler {
 // mux to handle the endpoints
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workspaces/{id}", h.GetWorkspace)
-	mux.HandleFunc("GET /users/{userID}/workspaces", h.ListWorkspaces)
+	mux.HandleFunc("GET /workspaces", h.ListWorkspaces)
 	mux.HandleFunc("POST /workspaces", h.CreateWorkspace)
 	mux.HandleFunc("PUT /workspaces/{id}", h.UpdateWorkspace)
 	mux.HandleFunc("DELETE /workspaces/{id}", h.DeleteWorkspace)
@@ -44,9 +46,9 @@ func (h *Handler) GetWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
-	userID, err := uuid.Parse(r.PathValue("userID"))
-	if err != nil {
-		http.Error(w, "invalid user id", http.StatusBadRequest)
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -60,16 +62,21 @@ func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var body struct {
-		UserID uuid.UUID `json:"user_id"`
-		Name   string    `json:"name"`
+		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 
-	ws, err := h.svc.CreateWorkspace(r.Context(), body.UserID, body.Name)
+	ws, err := h.svc.CreateWorkspace(r.Context(), userID, body.Name)
 	if err != nil {
 		writeError(w, r, err)
 		return
