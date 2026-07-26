@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { signIn, signUp } from '../api'
-import { setUser } from '../auth'
+import { login, register } from '../api'
+import { setSession } from '../auth'
 
 export default function Auth() {
   const navigate = useNavigate()
@@ -17,8 +17,8 @@ export default function Auth() {
     e.preventDefault()
     setLoading(true)
     try {
-      const user = isSignup ? await signUp(form) : await signIn(form)
-      setUser(user)
+      const { token, user } = isSignup ? await register(form) : await login(form)
+      setSession({ token, user })
       toast.success(isSignup ? 'Account created' : `Welcome back, ${user.name || user.email}`)
       navigate('/')
     } catch (err) {
