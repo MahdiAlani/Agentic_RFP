@@ -52,7 +52,18 @@ func (q *Queue) EnqueueEmbed(ctx context.Context, docID uuid.UUID) error {
 
 func (q *Queue) EnqueueGenerate(ctx context.Context, answerID, workspaceID uuid.UUID, question string) error {
 	return q.enqueue(ctx, StreamGenerate, map[string]any{
+		"kind":      "answer",
 		"answer_id": answerID.String(), "workspace_id": workspaceID.String(), "question": question,
+	})
+}
+
+// EnqueueChatReply asks a worker to generate the assistant reply for a pending
+// message. The worker loads the conversation history and fills message_id.
+func (q *Queue) EnqueueChatReply(ctx context.Context, messageID, conversationID uuid.UUID) error {
+	return q.enqueue(ctx, StreamGenerate, map[string]any{
+		"kind":            "chat_reply",
+		"message_id":      messageID.String(),
+		"conversation_id": conversationID.String(),
 	})
 }
 
