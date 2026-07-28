@@ -9,6 +9,7 @@ import (
 
 	"rfp-agent/internal/answers"
 	"rfp-agent/internal/auth"
+	"rfp-agent/internal/chat"
 	"rfp-agent/internal/database"
 	"rfp-agent/internal/documents"
 	"rfp-agent/internal/project"
@@ -66,6 +67,10 @@ func main() {
 	ansSvc := answers.NewService(ansRepo, q)
 	ansHandler := answers.NewHandler(ansSvc)
 
+	chatRepo := chat.NewRepository(db)
+	chatSvc := chat.NewService(chatRepo, q)
+	chatHandler := chat.NewHandler(chatSvc)
+
 	authHandler := auth.NewHandler(svc, secret)
 
 	// Protected routes require a valid Bearer token (checked by auth.Middleware).
@@ -75,6 +80,7 @@ func main() {
 	projHandler.RegisterRoutes(protected)
 	docHandler.RegisterRoutes(protected)
 	ansHandler.RegisterRoutes(protected)
+	chatHandler.RegisterRoutes(protected)
 	authHandler.RegisterProtectedRoutes(protected)
 
 	// Public routes (login/register) sit on the root mux; everything else falls
@@ -85,7 +91,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         ":8080",
-		Handler:      mux,
+		Handler:      logRequests(mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -93,4 +99,25 @@ func main() {
 
 	log.Println("listening on :8080")
 	log.Fatal(srv.ListenAndServe())
+}
+
+// statusWriter captures the response status code for logging.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusWriter) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+// logRequests logs every request: method, path, status, and duration.
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		start := time.Now()
+		next.ServeHTTP(sw, r)
+		log.Printf("%s %s -> %d (%s)", r.Method, r.URL.Path, sw.status, time.Since(start))
+	})
 }
