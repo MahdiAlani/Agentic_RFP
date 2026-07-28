@@ -1,17 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { toast } from 'sonner'
 import { listWorkspaces, createWorkspace } from '../api'
 import { getUser, clearSession } from '../auth'
-import ProjectsPanel from '../components/ProjectsPanel.jsx'
 import DocumentsPanel from '../components/DocumentsPanel.jsx'
-import AnswersPanel from '../components/AnswersPanel.jsx'
-
-const TABS = [
-  { key: 'documents', label: 'Documents' },
-  { key: 'answers', label: 'Q&A' },
-  { key: 'projects', label: 'Projects' },
-]
+import ProjectsPanel from '../components/ProjectsPanel.jsx'
+import Alert from '../components/Alert.jsx'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -19,7 +12,7 @@ export default function Dashboard() {
 
   const [workspaces, setWorkspaces] = useState([])
   const [selected, setSelected] = useState(null)
-  const [tab, setTab] = useState('documents')
+  const [error, setError] = useState('')
 
   useEffect(() => {
     listWorkspaces()
@@ -28,19 +21,19 @@ export default function Dashboard() {
         setWorkspaces(list)
         if (list.length) setSelected(list[0])
       })
-      .catch((err) => toast.error(err.message))
+      .catch((err) => setError(err.message))
   }, [])
 
   async function handleNewWorkspace() {
-    const name = window.prompt('Workspace name')
+    const name = window.prompt('Workspace name (your product / company)')
     if (!name || !name.trim()) return
+    setError('')
     try {
       const ws = await createWorkspace({ name: name.trim() })
       setWorkspaces((prev) => [...prev, ws])
       setSelected(ws)
-      toast.success(`Created “${ws.name}”`)
     } catch (err) {
-      toast.error(err.message)
+      setError(err.message)
     }
   }
 
@@ -88,31 +81,36 @@ export default function Dashboard() {
         </aside>
 
         <main className="main">
+          <Alert message={error} />
           {!selected ? (
             <div className="placeholder">
-              <p>Create a workspace to get started.</p>
+              <p>Create a workspace (your product) to get started.</p>
             </div>
           ) : (
             <>
               <div className="main-head">
                 <h2>{selected.name}</h2>
+                <p className="muted">Product knowledge base &amp; RFP projects</p>
               </div>
 
-              <nav className="tabs-row">
-                {TABS.map((t) => (
-                  <button
-                    key={t.key}
-                    className={tab === t.key ? 'tab-btn active' : 'tab-btn'}
-                    onClick={() => setTab(t.key)}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </nav>
+              <section className="section">
+                <h3 className="section-title">Knowledge base</h3>
+                <p className="muted section-sub">
+                  Upload product documentation. This is what answers are grounded in.
+                </p>
+                <DocumentsPanel workspace={selected} />
+              </section>
 
-              {tab === 'documents' && <DocumentsPanel workspace={selected} />}
-              {tab === 'answers' && <AnswersPanel workspace={selected} />}
-              {tab === 'projects' && <ProjectsPanel workspace={selected} />}
+              <section className="section">
+                <h3 className="section-title">RFP projects</h3>
+                <p className="muted section-sub">
+                  Each project is an RFP you're responding to. Open one to work on it.
+                </p>
+                <ProjectsPanel
+                  workspace={selected}
+                  onOpen={(p) => navigate(`/projects/${p.id}`)}
+                />
+              </section>
             </>
           )}
         </main>

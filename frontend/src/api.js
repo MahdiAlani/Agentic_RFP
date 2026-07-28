@@ -1,5 +1,5 @@
 // Thin API client. Backend calls go through the Vite dev proxy (/api -> :8080).
-import { getToken } from './auth'
+import { getToken, clearSession } from './auth'
 
 async function request(method, path, body) {
   const opts = { method, headers: {} }
@@ -13,6 +13,17 @@ async function request(method, path, body) {
   }
 
   const res = await fetch(`/api${path}`, opts)
+
+  // Expired/invalid token: drop the stale session and return to login.
+  // Skip for the auth endpoints themselves (a bad login shouldn't redirect).
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    clearSession()
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
+    throw new Error('session expired, please sign in again')
+  }
+
   if (!res.ok) {
     const text = await res.text()
     throw new Error(text.trim() || `request failed (${res.status})`)
@@ -80,6 +91,34 @@ export function confirmDocument(id) {
 
 export function getDownloadURL(id) {
   return request('GET', `/documents/${id}/download`)
+}
+
+export function listProjectDocuments(projectID) {
+  return request('GET', `/projects/${projectID}/documents`)
+}
+
+// --- projects ---
+
+export function getProject(id) {
+  return request('GET', `/projects/${id}`)
+}
+
+// --- chat (multi-turn, project-scoped) ---
+
+export function listConversations(projectID) {
+  return request('GET', `/projects/${projectID}/conversations`)
+}
+
+export function createConversation(projectID, title) {
+  return request('POST', `/projects/${projectID}/conversations`, { title: title || '' })
+}
+
+export function listMessages(conversationID) {
+  return request('GET', `/conversations/${conversationID}/messages`)
+}
+
+export function sendMessage(conversationID, content) {
+  return request('POST', `/conversations/${conversationID}/messages`, { content })
 }
 
 // --- answers (Q&A) ---

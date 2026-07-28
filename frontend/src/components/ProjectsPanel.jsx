@@ -1,28 +1,30 @@
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import { listProjects, createProject } from '../api'
+import Alert from './Alert.jsx'
 
-export default function ProjectsPanel({ workspace }) {
+export default function ProjectsPanel({ workspace, onOpen }) {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     setLoading(true)
+    setError('')
     listProjects(workspace.id)
       .then((ps) => setProjects(ps || []))
-      .catch((err) => toast.error(err.message))
+      .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [workspace.id])
 
   async function handleNew() {
     const name = window.prompt('Project name')
     if (!name || !name.trim()) return
+    setError('')
     try {
       const p = await createProject({ workspaceID: workspace.id, name: name.trim() })
       setProjects((prev) => [...prev, p])
-      toast.success(`Created “${p.name}”`)
     } catch (err) {
-      toast.error(err.message)
+      setError(err.message)
     }
   }
 
@@ -35,6 +37,8 @@ export default function ProjectsPanel({ workspace }) {
         </button>
       </div>
 
+      <Alert message={error} />
+
       {loading ? (
         <p className="muted">Loading…</p>
       ) : projects.length === 0 ? (
@@ -44,12 +48,16 @@ export default function ProjectsPanel({ workspace }) {
       ) : (
         <div className="grid">
           {projects.map((p) => (
-            <div key={p.id} className="card">
+            <button
+              key={p.id}
+              className="card card-btn"
+              onClick={() => onOpen?.(p)}
+            >
               <h4>{p.name}</h4>
               <span className="muted small">
                 {new Date(p.created_at).toLocaleDateString()}
               </span>
-            </div>
+            </button>
           ))}
         </div>
       )}

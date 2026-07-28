@@ -1,37 +1,46 @@
 import { useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import {
   listDocuments,
+  listProjectDocuments,
   createDocument,
   uploadToStorage,
   confirmDocument,
   getDownloadURL,
 } from '../api'
+import Alert from './Alert.jsx'
 
 const DOC_TYPES = ['rfp', 'reference', 'proposal', 'other']
 
-export default function DocumentsPanel({ workspace }) {
+// If `project` is provided, documents are scoped to that project; otherwise to
+// the workspace (the product knowledge base).
+export default function DocumentsPanel({ workspace, project }) {
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [docType, setDocType] = useState(DOC_TYPES[0])
+  const [error, setError] = useState('')
   const fileRef = useRef(null)
 
   function refresh() {
     setLoading(true)
-    listDocuments(workspace.id)
+    setError('')
+    const load = project
+      ? listProjectDocuments(project.id)
+      : listDocuments(workspace.id)
+    load
       .then((ds) => setDocuments(ds || []))
-      .catch((err) => toast.error(err.message))
+      .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }
 
-  useEffect(refresh, [workspace.id])
+  useEffect(refresh, [workspace.id, project?.id])
 
   async function handleUpload(e) {
     e.preventDefault()
+    setError('')
     const file = fileRef.current?.files?.[0]
     if (!file) {
-      toast.error('Choose a file first')
+      setError('Choose a file first.')
       return
     }
     setUploading(true)
@@ -39,6 +48,7 @@ export default function DocumentsPanel({ workspace }) {
       // 1. create metadata + get presigned PUT url
       const doc = await createDocument({
         workspaceID: workspace.id,
+        projectID: project?.id,
         fileName: file.name,
         documentType: docType,
       })
@@ -47,22 +57,22 @@ export default function DocumentsPanel({ workspace }) {
       // 3. confirm -> backend verifies + queues embedding
       await confirmDocument(doc.id)
 
-      toast.success(`Uploaded ${file.name}`)
       if (fileRef.current) fileRef.current.value = ''
       refresh()
     } catch (err) {
-      toast.error(err.message)
+      setError(err.message)
     } finally {
       setUploading(false)
     }
   }
 
   async function handleDownload(id) {
+    setError('')
     try {
       const { download_url } = await getDownloadURL(id)
       window.open(download_url, '_blank')
     } catch (err) {
-      toast.error(err.message)
+      setError(err.message)
     }
   }
 
@@ -81,6 +91,8 @@ export default function DocumentsPanel({ workspace }) {
           {uploading ? 'Uploading…' : 'Upload'}
         </button>
       </form>
+
+      <Alert message={error} />
 
       {loading ? (
         <p className="muted">Loading…</p>
