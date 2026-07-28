@@ -26,6 +26,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workspaces/{workspaceID}/documents", h.ListDocuments)
 	mux.HandleFunc("GET /projects/{projectID}/documents", h.ListProjectDocuments)
 	mux.HandleFunc("DELETE /documents/{id}", h.DeleteDocument)
+	mux.HandleFunc("PATCH /documents/{id}", h.RenameDocument)
 }
 
 type createResponse struct {
@@ -149,6 +150,29 @@ func (h *Handler) DeleteDocument(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) RenameDocument(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		FileName string `json:"file_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+
+	doc, err := h.svc.RenameDocument(r.Context(), id, body.FileName)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

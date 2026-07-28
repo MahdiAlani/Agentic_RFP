@@ -17,6 +17,7 @@ type Repository interface {
 	GetByProjectID(ctx context.Context, projectID uuid.UUID) ([]*document, error)
 	Create(ctx context.Context, d *document) (*document, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*document, error)
+	UpdateName(ctx context.Context, id uuid.UUID, name string) (*document, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -112,6 +113,20 @@ func (r *postgresRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status st
 		`UPDATE documents SET status = $1 WHERE id = $2
 		 RETURNING id, workspace_id, project_id, file_name, file_key, document_type, status, created_at`,
 		status, id,
+	).Scan(&updated.ID, &updated.WorkspaceID, &updated.ProjectID, &updated.FileName, &updated.FileKey, &updated.DocumentType, &updated.Status, &updated.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// Updates a document's name
+func (r *postgresRepo) UpdateName(ctx context.Context, id uuid.UUID, name string) (*document, error) {
+	updated := &document{}
+	err := r.db.Pool.QueryRow(ctx,
+		`UPDATE documents SET file_name = $1 WHERE id = $2
+		 RETURNING id, workspace_id, project_id, file_name, file_key, document_type, status, created_at`,
+		name, id,
 	).Scan(&updated.ID, &updated.WorkspaceID, &updated.ProjectID, &updated.FileName, &updated.FileKey, &updated.DocumentType, &updated.Status, &updated.CreatedAt)
 	if err != nil {
 		return nil, err

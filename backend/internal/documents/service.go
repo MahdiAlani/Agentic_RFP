@@ -36,6 +36,7 @@ type Service interface {
 	ListProjectDocuments(ctx context.Context, projectID uuid.UUID) ([]*document, error)
 	DownloadURL(ctx context.Context, id uuid.UUID) (string, error)
 	DeleteDocument(ctx context.Context, id uuid.UUID) error
+	RenameDocument(ctx context.Context, id uuid.UUID, fileName string) (*document, error)
 }
 
 // Repo service
@@ -155,6 +156,22 @@ func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID) error {
 		return mapDBError(err)
 	}
 	return nil
+}
+
+// RenameDocument changes the name of the document
+func (s *service) RenameDocument(ctx context.Context, id uuid.UUID, fileName string) (*document, error) {
+
+	fileName = strings.TrimSpace(fileName)
+	if fileName == "" {
+		return nil, fmt.Errorf("%w: file_name is required", ErrInvalidInput)
+	}
+
+	doc, err := s.repo.UpdateName(ctx, id, fileName)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+
+	return doc, nil
 }
 
 // validate trims and checks the document-supplied fields, returning the cleaned
