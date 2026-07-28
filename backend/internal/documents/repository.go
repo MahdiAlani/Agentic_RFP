@@ -14,6 +14,7 @@ import (
 type Repository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*document, error)
 	GetByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]*document, error)
+	GetByProjectID(ctx context.Context, projectID uuid.UUID) ([]*document, error)
 	Create(ctx context.Context, d *document) (*document, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*document, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -45,6 +46,30 @@ func (r *postgresRepo) GetByID(ctx context.Context, id uuid.UUID) (*document, er
 func (r *postgresRepo) GetByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]*document, error) {
 	rows, err := r.db.Pool.Query(ctx,
 		`SELECT id, workspace_id, project_id, file_name, file_key, document_type, status, created_at FROM documents WHERE workspace_id = $1`, workspaceID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var documents []*document
+	for rows.Next() {
+		d := &document{}
+		if err := rows.Scan(&d.ID, &d.WorkspaceID, &d.ProjectID, &d.FileName, &d.FileKey, &d.DocumentType, &d.Status, &d.CreatedAt); err != nil {
+			return nil, err
+		}
+		documents = append(documents, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return documents, nil
+}
+
+// Gets documents for a project
+func (r *postgresRepo) GetByProjectID(ctx context.Context, projectID uuid.UUID) ([]*document, error) {
+	rows, err := r.db.Pool.Query(ctx,
+		`SELECT id, workspace_id, project_id, file_name, file_key, document_type, status, created_at FROM documents WHERE project_id = $1`, projectID,
 	)
 	if err != nil {
 		return nil, err

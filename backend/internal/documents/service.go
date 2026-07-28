@@ -33,6 +33,7 @@ type Service interface {
 	ConfirmUpload(ctx context.Context, id uuid.UUID) (*document, error)
 	GetDocument(ctx context.Context, id uuid.UUID) (*document, error)
 	ListDocuments(ctx context.Context, workspaceID uuid.UUID) ([]*document, error)
+	ListProjectDocuments(ctx context.Context, projectID uuid.UUID) ([]*document, error)
 	DownloadURL(ctx context.Context, id uuid.UUID) (string, error)
 	DeleteDocument(ctx context.Context, id uuid.UUID) error
 }
@@ -118,6 +119,14 @@ func (s *service) GetDocument(ctx context.Context, id uuid.UUID) (*document, err
 
 func (s *service) ListDocuments(ctx context.Context, workspaceID uuid.UUID) ([]*document, error) {
 	docs, err := s.repo.GetByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	return docs, nil
+}
+
+func (s *service) ListProjectDocuments(ctx context.Context, projectID uuid.UUID) ([]*document, error) {
+	docs, err := s.repo.GetByProjectID(ctx, projectID)
 	if err != nil {
 		return nil, mapDBError(err)
 	}

@@ -24,6 +24,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /documents/{id}", h.GetDocument)
 	mux.HandleFunc("GET /documents/{id}/download", h.DownloadURL)
 	mux.HandleFunc("GET /workspaces/{workspaceID}/documents", h.ListDocuments)
+	mux.HandleFunc("GET /projects/{projectID}/documents", h.ListProjectDocuments)
 	mux.HandleFunc("DELETE /documents/{id}", h.DeleteDocument)
 }
 
@@ -111,6 +112,22 @@ func (h *Handler) ListDocuments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	docs, err := h.svc.ListDocuments(r.Context(), workspaceID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, docs)
+}
+
+func (h *Handler) ListProjectDocuments(w http.ResponseWriter, r *http.Request) {
+	projectID, err := uuid.Parse(r.PathValue("projectID"))
+	if err != nil {
+		http.Error(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+
+	docs, err := h.svc.ListProjectDocuments(r.Context(), projectID)
 	if err != nil {
 		writeError(w, r, err)
 		return
