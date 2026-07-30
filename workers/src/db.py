@@ -13,3 +13,12 @@ pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=5, open=True)
 def get_connection() -> psycopg.Connection:
     """Borrow a connection from the pool (use as a context manager)."""
     return pool.connection()
+
+
+def to_vector(embedding: list[float]) -> str:
+    """Render an embedding as pgvector's text form, e.g. '[0.1,0.2]'.
+
+    Passed as a normal string parameter and cast with `::vector` in SQL, which
+    avoids needing a type adapter registered on every connection.
+    """
+    return "[" + ",".join(repr(float(x)) for x in embedding) + "]"

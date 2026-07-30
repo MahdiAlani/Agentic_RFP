@@ -18,6 +18,8 @@ from src.config import (
     REDIS_PORT,
     STREAM_EMBED,
     STREAM_GENERATE,
+    WORKER_NAME,
+    WORKER_TYPE,
 )
 from src.embed_worker import handle_embed
 from src.generate_worker import handle_generate
@@ -68,10 +70,19 @@ def main() -> None:
     r.ping()
     log.info("connected to redis at %s:%s", REDIS_HOST, REDIS_PORT)
 
-    consumers = [
-        (STREAM_EMBED, "embed-1", handle_embed),
-        (STREAM_GENERATE, "generate-1", handle_generate),
-    ]
+    # WORKER_TYPE selects which pipelines this process serves, so embed and
+    # generate can run on separate machines (or scale independently).
+    consumers = []
+    if WORKER_TYPE in ("all", "embed"):
+        consumers.append((STREAM_EMBED, f"embed-{WORKER_NAME}", handle_embed))
+    if WORKER_TYPE in ("all", "generate"):
+        consumers.append((STREAM_GENERATE, f"generate-{WORKER_NAME}", handle_generate))
+
+    if not consumers:
+        log.error(
+            "WORKER_TYPE=%r is not one of: all, embed, generate. Exiting.", WORKER_TYPE
+        )
+        return
 
     threads = []
     for stream, name, handler in consumers:
