@@ -9,6 +9,7 @@ Run:  cd workers && python main.py
 
 import logging
 import threading
+import time
 
 import redis
 
@@ -32,6 +33,8 @@ log = logging.getLogger("workers")
 
 BLOCK_MS = 5000  # how long XREADGROUP blocks waiting for new messages
 
+SOCKET_TIMEOUT = BLOCK_MS / 1000 + 10
+
 
 def ensure_group(r: redis.Redis, stream: str, group: str) -> None:
     """Create the consumer group (and stream) if it doesn't exist yet."""
@@ -50,9 +53,21 @@ def consume(r: redis.Redis, stream: str, consumer_name: str, handler) -> None:
     ensure_group(r, stream, CONSUMER_GROUP)
     log.info("consuming %r as %r", stream, consumer_name)
     while True:
-        resp = r.xreadgroup(
-            CONSUMER_GROUP, consumer_name, {stream: ">"}, count=1, block=BLOCK_MS
-        )
+        try:
+            resp = r.xreadgroup(
+                CONSUMER_GROUP, consumer_name, {stream: ">"}, count=1, block=BLOCK_MS
+            )
+        except redis.exceptions.TimeoutError:
+            continue
+        except redis.exceptions.ConnectionError:
+            log.warning("redis connection lost on %r, retrying", stream)
+            time.sleep(1)
+            continue
+        except Exception:
+            log.exception("unexpected read error on %r, retrying", stream)
+            time.sleep(1)
+            continue
+
         if not resp:
             continue
         for _stream, messages in resp:
@@ -61,12 +76,19 @@ def consume(r: redis.Redis, stream: str, consumer_name: str, handler) -> None:
                     handler(fields)
                     r.xack(stream, CONSUMER_GROUP, msg_id)
                 except Exception:
-                    # Left un-acked -> visible via XPENDING for retry/claim.
-                    log.exception("handler failed for %s on %r", msg_id, stream)
+                   log.exception("handler failed for %s on %r", msg_id, stream)
 
 
 def main() -> None:
-    r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+    r = redis.Redis(
+        host=REDIS_HOST,
+        port=REDIS_PORT,
+        decode_responses=True,
+        socket_timeout=SOCKET_TIMEOUT,
+        socket_keepalive=True,
+
+        health_check_interval=30,
+    )
     r.ping()
     log.info("connected to redis at %s:%s", REDIS_HOST, REDIS_PORT)
 
@@ -92,8 +114,12 @@ def main() -> None:
         t.start()
         threads.append(t)
 
-    for t in threads:
-        t.join()
+    while True:
+        for t in threads:
+            t.join(timeout=1)
+            if not t.is_alive():
+                log.error("consumer %r died; exiting", t.name)
+                return
 
 
 if __name__ == "__main__":
