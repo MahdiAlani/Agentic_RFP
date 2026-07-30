@@ -21,8 +21,111 @@ func NewHandler(svc Service) *Handler {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /answers", h.CreateAnswer)
 	mux.HandleFunc("GET /answers/{id}", h.GetAnswer)
+	mux.HandleFunc("PATCH /answers/{id}", h.UpdateAnswer)
+	mux.HandleFunc("POST /answers/{id}/regenerate", h.RegenerateAnswer)
 	mux.HandleFunc("GET /workspaces/{workspaceID}/answers", h.ListAnswers)
+	mux.HandleFunc("GET /projects/{projectID}/answers", h.ListProjectAnswers)
+	mux.HandleFunc("POST /projects/{projectID}/answers/fill", h.FillProject)
+	mux.HandleFunc("POST /projects/{projectID}/answers/extract", h.ExtractQuestions)
 	mux.HandleFunc("DELETE /answers/{id}", h.DeleteAnswer)
+}
+
+func (h *Handler) ListProjectAnswers(w http.ResponseWriter, r *http.Request) {
+	projectID, err := uuid.Parse(r.PathValue("projectID"))
+	if err != nil {
+		http.Error(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+
+	as, err := h.svc.ListProjectAnswers(r.Context(), projectID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, as)
+}
+
+func (h *Handler) UpdateAnswer(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		AnswerText string `json:"answer_text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+
+	a, err := h.svc.UpdateAnswerText(r.Context(), id, body.AnswerText)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (h *Handler) RegenerateAnswer(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	a, err := h.svc.RegenerateAnswer(r.Context(), id)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (h *Handler) FillProject(w http.ResponseWriter, r *http.Request) {
+	projectID, err := uuid.Parse(r.PathValue("projectID"))
+	if err != nil {
+		http.Error(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+
+	queued, err := h.svc.FillProject(r.Context(), projectID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, struct {
+		Queued int `json:"queued"`
+	}{Queued: queued})
+}
+
+func (h *Handler) ExtractQuestions(w http.ResponseWriter, r *http.Request) {
+	projectID, err := uuid.Parse(r.PathValue("projectID"))
+	if err != nil {
+		http.Error(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		WorkspaceID uuid.UUID `json:"workspace_id"`
+		DocumentID  uuid.UUID `json:"document_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.svc.ExtractQuestions(r.Context(), body.WorkspaceID, projectID, body.DocumentID); err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (h *Handler) CreateAnswer(w http.ResponseWriter, r *http.Request) {

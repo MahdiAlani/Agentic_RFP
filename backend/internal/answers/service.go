@@ -25,6 +25,11 @@ type Service interface {
 	CreateAnswer(ctx context.Context, workspaceID uuid.UUID, projectID, documentID *uuid.UUID, question string) (*answer, error)
 	GetAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
 	ListAnswers(ctx context.Context, workspaceID uuid.UUID) ([]*answer, error)
+	ListProjectAnswers(ctx context.Context, projectID uuid.UUID) ([]*answer, error)
+	UpdateAnswerText(ctx context.Context, id uuid.UUID, text string) (*answer, error)
+	RegenerateAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
+	FillProject(ctx context.Context, projectID uuid.UUID) (int, error)
+	ExtractQuestions(ctx context.Context, workspaceID, projectID, documentID uuid.UUID) error
 	DeleteAnswer(ctx context.Context, id uuid.UUID) error
 }
 
@@ -72,6 +77,11 @@ func (s *service) GetAnswer(ctx context.Context, id uuid.UUID) (*answer, error) 
 	if err != nil {
 		return nil, mapDBError(err)
 	}
+	cites, err := s.repo.CitationsByAnswer(ctx, id)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	a.Citations = cites
 	return a, nil
 }
 
@@ -81,6 +91,86 @@ func (s *service) ListAnswers(ctx context.Context, workspaceID uuid.UUID) ([]*an
 		return nil, mapDBError(err)
 	}
 	return as, nil
+}
+
+// ListProjectAnswers returns an RFP's questions in order, each with its citations.
+func (s *service) ListProjectAnswers(ctx context.Context, projectID uuid.UUID) ([]*answer, error) {
+	as, err := s.repo.GetByProjectID(ctx, projectID)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	cites, err := s.repo.CitationsByProject(ctx, projectID)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	for _, a := range as {
+		a.Citations = cites[a.ID]
+	}
+	return as, nil
+}
+
+// UpdateAnswerText saves a user's edit, which also marks the answer done.
+func (s *service) UpdateAnswerText(ctx context.Context, id uuid.UUID, text string) (*answer, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, fmt.Errorf("%w: answer_text is required", ErrInvalidInput)
+	}
+	a, err := s.repo.UpdateText(ctx, id, text)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	return a, nil
+}
+
+// RegenerateAnswer re-queues a single question for the model.
+func (s *service) RegenerateAnswer(ctx context.Context, id uuid.UUID) (*answer, error) {
+	a, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+
+	updated, err := s.repo.UpdateStatus(ctx, id, "pending")
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+
+	if err := s.queue.EnqueueGenerate(ctx, a.ID, a.WorkspaceID, a.Question); err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// FillProject queues every unanswered question in a project and reports how
+// many jobs it enqueued. Answers already done are left alone.
+func (s *service) FillProject(ctx context.Context, projectID uuid.UUID) (int, error) {
+	as, err := s.repo.GetByProjectID(ctx, projectID)
+	if err != nil {
+		return 0, mapDBError(err)
+	}
+
+	queued := 0
+	for _, a := range as {
+		if a.Status == "done" || a.Status == "pending" {
+			continue
+		}
+		if _, err := s.repo.UpdateStatus(ctx, a.ID, "pending"); err != nil {
+			return queued, mapDBError(err)
+		}
+		if err := s.queue.EnqueueGenerate(ctx, a.ID, a.WorkspaceID, a.Question); err != nil {
+			return queued, err
+		}
+		queued++
+	}
+	return queued, nil
+}
+
+// ExtractQuestions asks a worker to read an RFP document and create one answer
+// row per question it finds.
+func (s *service) ExtractQuestions(ctx context.Context, workspaceID, projectID, documentID uuid.UUID) error {
+	if workspaceID == uuid.Nil || projectID == uuid.Nil || documentID == uuid.Nil {
+		return fmt.Errorf("%w: workspace_id, project_id and document_id are required", ErrInvalidInput)
+	}
+	return s.queue.EnqueueExtractQuestions(ctx, documentID, projectID, workspaceID)
 }
 
 func (s *service) DeleteAnswer(ctx context.Context, id uuid.UUID) error {

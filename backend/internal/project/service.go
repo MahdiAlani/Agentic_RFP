@@ -28,14 +28,22 @@ type Service interface {
 	DeleteProject(ctx context.Context, id uuid.UUID) error
 }
 
+// ObjectCleaner removes the stored files belonging to a project's documents.
+// Deleting a project cascades those rows away in Postgres, so the objects have
+// to go first - otherwise they are orphaned in storage forever.
+type ObjectCleaner interface {
+	RemoveProjectObjects(ctx context.Context, projectID uuid.UUID) error
+}
+
 // Repo service
 type service struct {
-	repo Repository
+	repo    Repository
+	objects ObjectCleaner
 }
 
 // Initializes a new repo service
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, objects ObjectCleaner) Service {
+	return &service{repo: repo, objects: objects}
 }
 
 func (s *service) GetProject(ctx context.Context, id uuid.UUID) (*project, error) {
@@ -79,6 +87,10 @@ func (s *service) UpdateProject(ctx context.Context, id uuid.UUID, name string) 
 }
 
 func (s *service) DeleteProject(ctx context.Context, id uuid.UUID) error {
+	// Storage first, while the document rows still tell us which keys to remove.
+	if err := s.objects.RemoveProjectObjects(ctx, id); err != nil {
+		return err
+	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return mapDBError(err)
 	}

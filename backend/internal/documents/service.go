@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,6 +38,11 @@ type Service interface {
 	DownloadURL(ctx context.Context, id uuid.UUID) (string, error)
 	DeleteDocument(ctx context.Context, id uuid.UUID) error
 	RenameDocument(ctx context.Context, id uuid.UUID, fileName string) (*document, error)
+	// Called before a workspace/project row is deleted: Postgres cascades the
+	// document rows away, so their stored objects must be removed first while
+	// we can still look up the file keys.
+	RemoveWorkspaceObjects(ctx context.Context, workspaceID uuid.UUID) error
+	RemoveProjectObjects(ctx context.Context, projectID uuid.UUID) error
 }
 
 // Repo service
@@ -118,8 +124,10 @@ func (s *service) GetDocument(ctx context.Context, id uuid.UUID) (*document, err
 	return doc, nil
 }
 
+// ListDocuments returns the workspace knowledge base: documents that belong to
+// the workspace itself, not to one of its projects.
 func (s *service) ListDocuments(ctx context.Context, workspaceID uuid.UUID) ([]*document, error) {
-	docs, err := s.repo.GetByWorkspaceID(ctx, workspaceID)
+	docs, err := s.repo.GetWorkspaceLevel(ctx, workspaceID)
 	if err != nil {
 		return nil, mapDBError(err)
 	}
@@ -172,6 +180,36 @@ func (s *service) RenameDocument(ctx context.Context, id uuid.UUID, fileName str
 	}
 
 	return doc, nil
+}
+
+// RemoveWorkspaceObjects deletes the stored files of every document in a workspace.
+func (s *service) RemoveWorkspaceObjects(ctx context.Context, workspaceID uuid.UUID) error {
+	docs, err := s.repo.GetByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return mapDBError(err)
+	}
+	s.removeObjects(ctx, docs)
+	return nil
+}
+
+// RemoveProjectObjects deletes the stored files of every document in a project.
+func (s *service) RemoveProjectObjects(ctx context.Context, projectID uuid.UUID) error {
+	docs, err := s.repo.GetByProjectID(ctx, projectID)
+	if err != nil {
+		return mapDBError(err)
+	}
+	s.removeObjects(ctx, docs)
+	return nil
+}
+
+// removeObjects is best-effort: a missing or unreachable object shouldn't block
+// the delete, but it is logged so orphans can be found later.
+func (s *service) removeObjects(ctx context.Context, docs []*document) {
+	for _, d := range docs {
+		if err := s.storage.Remove(ctx, d.FileKey); err != nil {
+			log.Printf("remove object %s: %v", d.FileKey, err)
+		}
+	}
 }
 
 // validate trims and checks the document-supplied fields, returning the cleaned

@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5"
+
 	"rfp-agent/internal/database"
 
 	"github.com/google/uuid"
@@ -13,6 +15,7 @@ type Repository interface {
 	GetConversation(ctx context.Context, id uuid.UUID) (*conversation, error)
 	ListConversations(ctx context.Context, projectID uuid.UUID) ([]*conversation, error)
 	UpdateConversationTitle(ctx context.Context, id uuid.UUID, title string) (*conversation, error)
+	DeleteConversation(ctx context.Context, id uuid.UUID) error
 	CreateMessage(ctx context.Context, m *message) (*message, error)
 	ListMessages(ctx context.Context, conversationID uuid.UUID) ([]*message, error)
 }
@@ -81,6 +84,18 @@ func (r *postgresRepo) UpdateConversationTitle(ctx context.Context, id uuid.UUID
 		return nil, err
 	}
 	return updated, nil
+}
+
+// Deletes a conversation; its messages go with it via ON DELETE CASCADE.
+func (r *postgresRepo) DeleteConversation(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.db.Pool.Exec(ctx, `DELETE FROM conversations WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 func (r *postgresRepo) CreateMessage(ctx context.Context, m *message) (*message, error) {

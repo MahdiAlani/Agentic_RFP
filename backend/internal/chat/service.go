@@ -24,6 +24,7 @@ type Service interface {
 	ListConversations(ctx context.Context, projectID uuid.UUID) ([]*conversation, error)
 	GetConversation(ctx context.Context, id uuid.UUID) (*conversation, error)
 	RenameConversation(ctx context.Context, id uuid.UUID, title string) (*conversation, error)
+	DeleteConversation(ctx context.Context, id uuid.UUID) error
 	ListMessages(ctx context.Context, conversationID uuid.UUID) ([]*message, error)
 	SendMessage(ctx context.Context, conversationID uuid.UUID, content string) (*message, *message, error)
 }
@@ -80,6 +81,14 @@ func (s *service) RenameConversation(ctx context.Context, id uuid.UUID, title st
 		return nil, mapDBError(err)
 	}
 	return c, nil
+}
+
+// DeleteConversation removes a conversation and all of its messages.
+func (s *service) DeleteConversation(ctx context.Context, id uuid.UUID) error {
+	if err := s.repo.DeleteConversation(ctx, id); err != nil {
+		return mapDBError(err)
+	}
+	return nil
 }
 
 func (s *service) ListMessages(ctx context.Context, conversationID uuid.UUID) ([]*message, error) {

@@ -22,7 +22,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /projects/{id}", h.GetProject)
 	mux.HandleFunc("GET /workspaces/{workspaceID}/projects", h.ListProjects)
 	mux.HandleFunc("POST /projects", h.CreateProject)
-	mux.HandleFunc("PUT /projects/{id}", h.UpdateProject)
+	mux.HandleFunc("PATCH /projects/{id}", h.UpdateProject)
 	mux.HandleFunc("DELETE /projects/{id}", h.DeleteProject)
 }
 

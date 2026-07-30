@@ -51,17 +51,19 @@ func main() {
 	svc := user.NewService(repo)
 	h := user.NewHandler(svc)
 
-	wsRepo := workspace.NewRepository(db)
-	wsSvc := workspace.NewService(wsRepo)
-	wsHandler := workspace.NewHandler(wsSvc)
-
-	projRepo := project.NewRepository(db)
-	projSvc := project.NewService(projRepo)
-	projHandler := project.NewHandler(projSvc)
-
+	// Documents first: workspace and project deletes use it to clear stored
+	// files before Postgres cascades the document rows away.
 	docRepo := documents.NewRepository(db)
 	docSvc := documents.NewService(docRepo, st, q)
 	docHandler := documents.NewHandler(docSvc)
+
+	wsRepo := workspace.NewRepository(db)
+	wsSvc := workspace.NewService(wsRepo, docSvc)
+	wsHandler := workspace.NewHandler(wsSvc)
+
+	projRepo := project.NewRepository(db)
+	projSvc := project.NewService(projRepo, docSvc)
+	projHandler := project.NewHandler(projSvc)
 
 	ansRepo := answers.NewRepository(db)
 	ansSvc := answers.NewService(ansRepo, q)

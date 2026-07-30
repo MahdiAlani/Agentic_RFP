@@ -28,14 +28,22 @@ type Service interface {
 	DeleteWorkspace(ctx context.Context, id uuid.UUID) error
 }
 
+// ObjectCleaner removes the stored files belonging to a workspace's documents.
+// Deleting a workspace cascades those rows away in Postgres, so the objects have
+// to go first - otherwise they are orphaned in storage forever.
+type ObjectCleaner interface {
+	RemoveWorkspaceObjects(ctx context.Context, workspaceID uuid.UUID) error
+}
+
 // Repo service
 type service struct {
-	repo Repository
+	repo    Repository
+	objects ObjectCleaner
 }
 
 // Initializes a new repo service
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, objects ObjectCleaner) Service {
+	return &service{repo: repo, objects: objects}
 }
 
 func (s *service) GetWorkspace(ctx context.Context, id uuid.UUID) (*workspace, error) {
@@ -79,6 +87,10 @@ func (s *service) UpdateWorkspace(ctx context.Context, id uuid.UUID, name string
 }
 
 func (s *service) DeleteWorkspace(ctx context.Context, id uuid.UUID) error {
+	// Storage first, while the document rows still tell us which keys to remove.
+	if err := s.objects.RemoveWorkspaceObjects(ctx, id); err != nil {
+		return err
+	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return mapDBError(err)
 	}

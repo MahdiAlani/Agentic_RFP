@@ -24,7 +24,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workspaces/{id}", h.GetWorkspace)
 	mux.HandleFunc("GET /workspaces", h.ListWorkspaces)
 	mux.HandleFunc("POST /workspaces", h.CreateWorkspace)
-	mux.HandleFunc("PUT /workspaces/{id}", h.UpdateWorkspace)
+	mux.HandleFunc("PATCH /workspaces/{id}", h.UpdateWorkspace)
 	mux.HandleFunc("DELETE /workspaces/{id}", h.DeleteWorkspace)
 }
 

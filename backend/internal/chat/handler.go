@@ -22,6 +22,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /projects/{projectID}/conversations", h.ListConversations)
 	mux.HandleFunc("GET /conversations/{id}", h.GetConversation)
 	mux.HandleFunc("PATCH /conversations/{id}", h.RenameConversation)
+	mux.HandleFunc("DELETE /conversations/{id}", h.DeleteConversation)
 	mux.HandleFunc("GET /conversations/{id}/messages", h.ListMessages)
 	mux.HandleFunc("POST /conversations/{id}/messages", h.SendMessage)
 }
@@ -102,6 +103,21 @@ func (h *Handler) RenameConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, c)
+}
+
+func (h *Handler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.svc.DeleteConversation(r.Context(), id); err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
