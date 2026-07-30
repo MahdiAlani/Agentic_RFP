@@ -58,7 +58,7 @@ export default function ProjectView() {
                   <>
                     <p className="muted section-sub">
                       Upload the RFP itself as type <strong>RFP</strong>; supporting
-                      material (requirements, addenda) as <strong>Other</strong>.
+                      material (requirements, references) as <strong>Other</strong>.
                     </p>
                     <DocumentsPanel
                       workspace={{ id: project.workspace_id }}
