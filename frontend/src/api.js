@@ -52,6 +52,14 @@ export function createWorkspace({ name }) {
   return request('POST', '/workspaces', { name })
 }
 
+export function renameWorkspace(id, name) {
+  return request('PATCH', `/workspaces/${id}`, { name })
+}
+
+export function deleteWorkspace(id) {
+  return request('DELETE', `/workspaces/${id}`)
+}
+
 // --- projects ---
 
 export function listProjects(workspaceID) {
@@ -60,6 +68,14 @@ export function listProjects(workspaceID) {
 
 export function createProject({ workspaceID, name }) {
   return request('POST', '/projects', { workspace_id: workspaceID, name })
+}
+
+export function renameProject(id, name) {
+  return request('PATCH', `/projects/${id}`, { name })
+}
+
+export function deleteProject(id) {
+  return request('DELETE', `/projects/${id}`)
 }
 
 // --- documents (presigned upload flow) ---
@@ -97,6 +113,14 @@ export function listProjectDocuments(projectID) {
   return request('GET', `/projects/${projectID}/documents`)
 }
 
+export function renameDocument(id, fileName) {
+  return request('PATCH', `/documents/${id}`, { file_name: fileName })
+}
+
+export function deleteDocument(id) {
+  return request('DELETE', `/documents/${id}`)
+}
+
 // --- projects ---
 
 export function getProject(id) {
@@ -113,6 +137,14 @@ export function createConversation(projectID, title) {
   return request('POST', `/projects/${projectID}/conversations`, { title: title || '' })
 }
 
+export function renameConversation(id, title) {
+  return request('PATCH', `/conversations/${id}`, { title })
+}
+
+export function deleteConversation(id) {
+  return request('DELETE', `/conversations/${id}`)
+}
+
 export function listMessages(conversationID) {
   return request('GET', `/conversations/${conversationID}/messages`)
 }
@@ -121,10 +153,14 @@ export function sendMessage(conversationID, content) {
   return request('POST', `/conversations/${conversationID}/messages`, { content })
 }
 
-// --- answers (Q&A) ---
+// --- answers (the RFP question/answer editor) ---
 
 export function listAnswers(workspaceID) {
   return request('GET', `/workspaces/${workspaceID}/answers`)
+}
+
+export function listProjectAnswers(projectID) {
+  return request('GET', `/projects/${projectID}/answers`)
 }
 
 export function createAnswer({ workspaceID, projectID, documentID, question }) {
@@ -133,5 +169,30 @@ export function createAnswer({ workspaceID, projectID, documentID, question }) {
     project_id: projectID || null,
     document_id: documentID || null,
     question,
+  })
+}
+
+export function updateAnswer(id, answerText) {
+  return request('PATCH', `/answers/${id}`, { answer_text: answerText })
+}
+
+export function regenerateAnswer(id) {
+  return request('POST', `/answers/${id}/regenerate`)
+}
+
+export function deleteAnswer(id) {
+  return request('DELETE', `/answers/${id}`)
+}
+
+// Queue every unanswered question in the project. Resolves to { queued }.
+export function fillProjectAnswers(projectID) {
+  return request('POST', `/projects/${projectID}/answers/fill`)
+}
+
+// Ask a worker to read an RFP document and create a question row per question.
+export function extractQuestions({ projectID, workspaceID, documentID }) {
+  return request('POST', `/projects/${projectID}/answers/extract`, {
+    workspace_id: workspaceID,
+    document_id: documentID,
   })
 }

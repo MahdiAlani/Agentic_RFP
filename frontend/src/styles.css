@@ -394,31 +394,6 @@ body {
   font-weight: 600;
 }
 
-/* ---------- Tabs ---------- */
-
-.tabs-row {
-  display: flex;
-  gap: 0.25rem;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 1.75rem;
-}
-
-.tab-btn {
-  border: none;
-  background: none;
-  padding: 0.6rem 0.9rem;
-  font-size: 0.9rem;
-  color: var(--ink-soft);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.tab-btn.active {
-  color: var(--ink);
-  border-bottom-color: var(--accent);
-}
-
 /* ---------- Panel bars ---------- */
 
 .panel-bar,
@@ -572,56 +547,18 @@ body {
 
 /* ---------- Chat ---------- */
 
+/* Chat fills its container (the project side panel), single column. */
 .chat {
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: 1.25rem;
-  height: calc(100vh - 220px);
-  min-height: 360px;
-}
-
-.chat-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  border-right: 1px solid var(--line);
-  padding-right: 1rem;
+  flex: 1;
+  min-height: 0;
 }
 
 .full {
   width: 100%;
 }
 
-.conv-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  overflow-y: auto;
-}
-
-.conv {
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  padding: 0.45rem 0.6rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.conv:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-
-.conv.active {
-  background: var(--ink);
-  color: var(--paper);
-}
 
 .chat-main {
   display: flex;
@@ -689,6 +626,362 @@ body {
   border-color: var(--accent);
 }
 
+/* ---------- Project workspace: editor + chat side panel ---------- */
+
+.project-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 0;
+  flex: 1;
+}
+
+.project-body.with-chat {
+  grid-template-columns: minmax(0, 1fr) 26rem;
+}
+
+.project-main {
+  padding: 2rem 2.5rem 3rem;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.project-chat {
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 1.25rem 1.25rem 1rem;
+  background: #fffdf8;
+}
+
+.project-chat-head h3 {
+  margin: 0 0 0.2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.project-chat-head {
+  margin-bottom: 0.9rem;
+}
+
+/* Collapsible section header (documents). */
+.disclosure {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.disclosure-caret {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+/* ---------- RFP editor (question / answer list) ---------- */
+
+.editor {
+  margin-bottom: 2.5rem;
+}
+
+.editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.extract-select,
+.conv-select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  background: #fffdf8;
+  color: var(--ink);
+  max-width: 100%;
+}
+
+.qa-list {
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  counter-reset: qa;
+}
+
+.qa-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.1rem 1.2rem;
+  background: #fffdf8;
+  counter-increment: qa;
+}
+
+.qa-question {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.qa-question p {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.qa-question p::before {
+  content: counter(qa) '. ';
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.qa-answer {
+  width: 100%;
+  min-height: 4.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  background: var(--paper);
+  color: var(--ink);
+  resize: vertical;
+  overflow: hidden;
+}
+
+.qa-answer:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.qa-thinking {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.qa-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.qa-foot-actions {
+  display: flex;
+  gap: 0.9rem;
+  margin-left: auto;
+  font-size: 0.82rem;
+}
+
+.add-question {
+  align-self: flex-start;
+}
+
+.badge.new {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink-soft);
+}
+
+/* Conversation picker at the top of the chat panel. */
+.conv-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.conv-bar .conv-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- CRUD actions (rename / delete) ---------- */
+
+.row-actions {
+  display: flex;
+  gap: 0.15rem;
+  align-items: center;
+}
+
+.row-actions.end {
+  justify-content: flex-end;
+}
+
+.main-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+/* Buttons that pair an icon with a label. */
+.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ---------- Inline edit (rename / create) ---------- */
+
+.inline-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-edit input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  font: inherit;
+  font-size: 0.9rem;
+  background: #fffdf8;
+  color: var(--ink);
+}
+
+.inline-edit input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+}
+
+.inline-edit.lg input {
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+/* ---------- Confirm dialog ---------- */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 25, 20, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 50;
+}
+
+.dialog {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.5rem 1.6rem 1.3rem;
+  max-width: 26rem;
+  width: 100%;
+  box-shadow: 0 18px 40px rgba(28, 25, 20, 0.22);
+}
+
+.dialog h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.dialog p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.4rem;
+}
+
+.danger-btn {
+  border: 1px solid var(--error);
+  background: var(--error);
+  color: #fff;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.danger-btn:hover {
+  filter: brightness(0.93);
+}
+
+/* Project cards: the card body opens the project, actions sit below it. */
+.card-open {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.card .row-actions {
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-soft);
+  line-height: 1;
+  padding: 0.35rem;
+  border-radius: 5px;
+}
+
+.icon-btn:hover {
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--ink);
+}
+
+.icon-btn.danger:hover {
+  color: var(--error);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 @media (max-width: 720px) {
   .dash-body {
     grid-template-columns: 1fr;
@@ -697,14 +990,15 @@ body {
     border-right: none;
     border-bottom: 1px solid var(--line);
   }
-  .chat {
+  .project-body.with-chat {
     grid-template-columns: 1fr;
-    height: auto;
   }
-  .chat-sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-    padding-right: 0;
-    padding-bottom: 1rem;
+  .project-chat {
+    border-left: none;
+    border-top: 1px solid var(--line);
+    min-height: 26rem;
+  }
+  .project-main {
+    padding: 1.5rem 1.25rem 2rem;
   }
 }

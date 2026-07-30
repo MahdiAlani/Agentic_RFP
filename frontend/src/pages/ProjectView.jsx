@@ -3,19 +3,16 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getProject } from '../api'
 import ChatPanel from '../components/ChatPanel.jsx'
 import DocumentsPanel from '../components/DocumentsPanel.jsx'
+import RfpEditor from '../components/RfpEditor.jsx'
 import Alert from '../components/Alert.jsx'
-
-const TABS = [
-  { key: 'chat', label: 'Chat' },
-  { key: 'documents', label: 'RFP & documents' },
-]
 
 export default function ProjectView() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [project, setProject] = useState(null)
-  const [tab, setTab] = useState('chat')
   const [error, setError] = useState('')
+  const [chatOpen, setChatOpen] = useState(true)
+  const [docsOpen, setDocsOpen] = useState(false)
 
   useEffect(() => {
     getProject(id)
@@ -32,36 +29,60 @@ export default function ProjectView() {
           </button>
           <span className="mark">{project ? project.name : 'Loading…'}</span>
         </div>
+        <div className="topbar-right">
+          <button className="ghost" onClick={() => setChatOpen((v) => !v)}>
+            {chatOpen ? 'Hide chat' : 'Show chat'}
+          </button>
+        </div>
       </header>
 
-      <main className="main">
-        <Alert message={error} />
-        {!project ? (
-          error ? null : <p className="muted">Loading…</p>
-        ) : (
-          <>
-            <nav className="tabs-row">
-              {TABS.map((t) => (
-                <button
-                  key={t.key}
-                  className={tab === t.key ? 'tab-btn active' : 'tab-btn'}
-                  onClick={() => setTab(t.key)}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </nav>
+      <div className={chatOpen ? 'project-body with-chat' : 'project-body'}>
+        <main className="project-main">
+          <Alert message={error} />
+          {!project ? (
+            error ? null : <p className="muted">Loading…</p>
+          ) : (
+            <>
+              <RfpEditor project={project} />
 
-            {tab === 'chat' && <ChatPanel project={project} />}
-            {tab === 'documents' && (
-              <DocumentsPanel
-                workspace={{ id: project.workspace_id }}
-                project={project}
-              />
-            )}
-          </>
+              <section className="section">
+                <button
+                  className="disclosure"
+                  onClick={() => setDocsOpen((v) => !v)}
+                  aria-expanded={docsOpen}
+                >
+                  <span className="disclosure-caret">{docsOpen ? '▾' : '▸'}</span>
+                  RFP &amp; supporting documents
+                </button>
+                {docsOpen && (
+                  <>
+                    <p className="muted section-sub">
+                      Upload the RFP itself as type <strong>RFP</strong>; supporting
+                      material (requirements, addenda) as <strong>Other</strong>.
+                    </p>
+                    <DocumentsPanel
+                      workspace={{ id: project.workspace_id }}
+                      project={project}
+                    />
+                  </>
+                )}
+              </section>
+            </>
+          )}
+        </main>
+
+        {chatOpen && project && (
+          <aside className="project-chat">
+            <div className="project-chat-head">
+              <h3>Chat</h3>
+              <p className="muted small">
+                Ask anything - grounded in your workspace knowledge base.
+              </p>
+            </div>
+            <ChatPanel project={project} />
+          </aside>
         )}
-      </main>
+      </div>
     </div>
   )
 }

@@ -4,8 +4,13 @@ import {
   createConversation,
   listMessages,
   sendMessage,
+  renameConversation,
+  deleteConversation,
 } from '../api'
 import Alert from './Alert.jsx'
+import InlineEdit from './InlineEdit.jsx'
+import ConfirmDialog from './ConfirmDialog.jsx'
+import { PencilIcon, TrashIcon, PlusIcon } from './icons.jsx'
 
 export default function ChatPanel({ project }) {
   const [conversations, setConversations] = useState([])
@@ -14,6 +19,8 @@ export default function ChatPanel({ project }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [renamingId, setRenamingId] = useState(null)
+  const [pendingDelete, setPendingDelete] = useState(null)
   const bottomRef = useRef(null)
 
   // Load (or create) conversations for this project.
@@ -82,24 +89,82 @@ export default function ChatPanel({ project }) {
     }
   }
 
+  async function handleRename(id, title) {
+    setError('')
+    try {
+      const updated = await renameConversation(id, title)
+      setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      setRenamingId(null)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function handleDelete() {
+    setError('')
+    try {
+      await deleteConversation(pendingDelete.id)
+      const remaining = conversations.filter((c) => c.id !== pendingDelete.id)
+      setConversations(remaining)
+      // If the open chat was deleted, fall back to the next one.
+      if (pendingDelete.id === activeId) {
+        setActiveId(remaining[0]?.id ?? null)
+        setMessages([])
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPendingDelete(null)
+    }
+  }
+
+  const active = conversations.find((c) => c.id === activeId)
+
   return (
     <div className="chat">
-      <div className="chat-sidebar">
-        <button className="primary full" onClick={handleNewChat}>
-          + New chat
-        </button>
-        <ul className="conv-list">
-          {conversations.map((c) => (
-            <li key={c.id}>
+      <div className="conv-bar">
+        {renamingId ? (
+          <InlineEdit
+            value={active?.title || ''}
+            onSave={(title) => handleRename(renamingId, title)}
+            onCancel={() => setRenamingId(null)}
+          />
+        ) : (
+          <>
+            <select
+              className="conv-select"
+              value={activeId || ''}
+              onChange={(e) => setActiveId(e.target.value)}
+            >
+              {conversations.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))}
+            </select>
+            <div className="row-actions">
               <button
-                className={activeId === c.id ? 'conv active' : 'conv'}
-                onClick={() => setActiveId(c.id)}
+                className="icon-btn"
+                title="Rename chat"
+                disabled={!active}
+                onClick={() => setRenamingId(activeId)}
               >
-                {c.title}
+                <PencilIcon />
               </button>
-            </li>
-          ))}
-        </ul>
+              <button
+                className="icon-btn danger"
+                title="Delete chat"
+                disabled={!active}
+                onClick={() => setPendingDelete(active)}
+              >
+                <TrashIcon />
+              </button>
+              <button className="icon-btn" title="New chat" onClick={handleNewChat}>
+                <PlusIcon />
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="chat-main">
@@ -134,6 +199,14 @@ export default function ChatPanel({ project }) {
           </button>
         </form>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title={`Delete "${pendingDelete?.title}"?`}
+        message="This chat and all of its messages will be permanently deleted."
+        onConfirm={handleDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }
