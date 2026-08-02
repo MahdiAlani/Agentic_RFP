@@ -8,6 +8,7 @@ Run:  cd workers && python main.py
 """
 
 import logging
+import signal
 import threading
 import time
 
@@ -35,6 +36,15 @@ BLOCK_MS = 5000  # how long XREADGROUP blocks waiting for new messages
 
 SOCKET_TIMEOUT = BLOCK_MS / 1000 + 10
 
+RECLAIM_IDLE_MS = 300_000  # entries pending this long are assumed orphaned
+RECLAIM_EVERY_S = 60
+MAX_DELIVERIES = 3  # after this many attempts a job is dead-lettered
+
+# Time to let in flight jobs finish after SIGTERM.
+SHUTDOWN_WAIT_S = 240
+
+shutdown = threading.Event()
+
 
 def ensure_group(r: redis.Redis, stream: str, group: str) -> None:
     """Create the consumer group (and stream) if it doesn't exist yet."""
@@ -48,11 +58,45 @@ def ensure_group(r: redis.Redis, stream: str, group: str) -> None:
             raise
 
 
+def process(r: redis.Redis, stream: str, msg_id: str, fields: dict, handler) -> None:
+    try:
+        handler(fields)
+    except Exception:
+        log.exception("handler failed for %s on %r", msg_id, stream)
+        return
+    r.xack(stream, CONSUMER_GROUP, msg_id)
+
+
+def reclaim(r: redis.Redis, stream: str, consumer_name: str, handler) -> None:
+    """Take over entries left pending by workers that died mid job."""
+    _cursor, messages, _deleted = r.xautoclaim(
+        stream, CONSUMER_GROUP, consumer_name, min_idle_time=RECLAIM_IDLE_MS, count=10
+    )
+    for msg_id, fields in messages:
+        pending = r.xpending_range(stream, CONSUMER_GROUP, msg_id, msg_id, 1)
+        delivered = pending[0]["times_delivered"] if pending else 1
+        if delivered > MAX_DELIVERIES:
+            log.error("dead-lettering %s on %r after %d attempts", msg_id, stream, delivered)
+            r.xadd(f"{stream}:dead", fields)
+            r.xack(stream, CONSUMER_GROUP, msg_id)
+            continue
+        log.warning("reclaimed %s on %r (attempt %d)", msg_id, stream, delivered)
+        process(r, stream, msg_id, fields, handler)
+
+
 def consume(r: redis.Redis, stream: str, consumer_name: str, handler) -> None:
     """Blocking consume loop for a single stream."""
     ensure_group(r, stream, CONSUMER_GROUP)
     log.info("consuming %r as %r", stream, consumer_name)
-    while True:
+    next_reclaim = 0.0
+    while not shutdown.is_set():
+        if time.time() >= next_reclaim:
+            next_reclaim = time.time() + RECLAIM_EVERY_S
+            try:
+                reclaim(r, stream, consumer_name, handler)
+            except Exception:
+                log.exception("reclaim failed on %r", stream)
+
         try:
             resp = r.xreadgroup(
                 CONSUMER_GROUP, consumer_name, {stream: ">"}, count=1, block=BLOCK_MS
@@ -72,14 +116,20 @@ def consume(r: redis.Redis, stream: str, consumer_name: str, handler) -> None:
             continue
         for _stream, messages in resp:
             for msg_id, fields in messages:
-                try:
-                    handler(fields)
-                    r.xack(stream, CONSUMER_GROUP, msg_id)
-                except Exception:
-                   log.exception("handler failed for %s on %r", msg_id, stream)
+                process(r, stream, msg_id, fields, handler)
+
+    log.info("consumer %r stopped", consumer_name)
+
+
+def _on_signal(signum, _frame) -> None:
+    log.info("signal %s received, draining", signum)
+    shutdown.set()
 
 
 def main() -> None:
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT, _on_signal)
+
     r = redis.Redis(
         host=REDIS_HOST,
         port=REDIS_PORT,
@@ -114,12 +164,18 @@ def main() -> None:
         t.start()
         threads.append(t)
 
-    while True:
+    while not shutdown.is_set():
         for t in threads:
             t.join(timeout=1)
             if not t.is_alive():
                 log.error("consumer %r died; exiting", t.name)
                 return
+
+    # Drain: consumers stop reading new jobs but finish what they hold.
+    deadline = time.time() + SHUTDOWN_WAIT_S
+    for t in threads:
+        t.join(timeout=max(0, deadline - time.time()))
+    log.info("shutdown complete")
 
 
 if __name__ == "__main__":
