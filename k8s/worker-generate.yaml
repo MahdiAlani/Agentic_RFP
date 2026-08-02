@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-generate
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: worker-generate }
+  template:
+    metadata:
+      labels: { app: worker-generate }
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: agentic-rfp-worker:latest
+          env:
+            - name: WORKER_TYPE
+              value: "generate"
+            - name: WORKER_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - name: REDIS_ADDR
+              value: "redis:6379"
+          envFrom:
+            - secretRef: { name: agentic-rfp-env }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-generate
+spec:
+  scaleTargetRef:
+    name: worker-generate
+  minReplicaCount: 1
+  maxReplicaCount: 30
+  pollingInterval: 10
+  cooldownPeriod: 60
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 120
+  triggers:
+    - type: redis-streams
+      metadata:
+        addressFromEnv: REDIS_ADDR
+        stream: generate
+        consumerGroup: workers
+        lagCount: "1"
+        activationLagCount: "1"

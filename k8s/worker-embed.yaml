@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-embed
+spec:
+  replicas: 0
+  selector:
+    matchLabels: { app: worker-embed }
+  template:
+    metadata:
+      labels: { app: worker-embed }
+    spec:
+      terminationGracePeriodSeconds: 300
+      containers:
+        - name: worker
+          image: agentic-rfp-worker:latest
+          env:
+            - name: WORKER_TYPE
+              value: "embed"
+            - name: WORKER_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - name: REDIS_ADDR
+              value: "redis:6379"
+          envFrom:
+            - secretRef: { name: agentic-rfp-env }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { memory: 1Gi }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-embed
+spec:
+  scaleTargetRef:
+    name: worker-embed
+  minReplicaCount: 0
+  maxReplicaCount: 20
+  pollingInterval: 15
+  cooldownPeriod: 300
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+  triggers:
+    - type: redis-streams
+      metadata:
+        addressFromEnv: REDIS_ADDR
+        stream: embed
+        consumerGroup: workers
+        lagCount: "3"
+        activationLagCount: "1"
