@@ -171,7 +171,6 @@ def main() -> None:
                 log.error("consumer %r died; exiting", t.name)
                 return
 
-    # Drain: consumers stop reading new jobs but finish what they hold.
     deadline = time.time() + SHUTDOWN_WAIT_S
     for t in threads:
         t.join(timeout=max(0, deadline - time.time()))
