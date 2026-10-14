@@ -114,8 +114,13 @@ func validate(workspaceID uuid.UUID, name string) (string, error) {
 // errors so callers (and the HTTP layer) stay decoupled from pgx.
 func mapDBError(err error) error {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
-		return ErrConflict
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505": // unique_violation
+			return ErrConflict
+		case "23503": // foreign_key_violation
+			return fmt.Errorf("%w: referenced workspace does not exist", ErrInvalidInput)
+		}
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
