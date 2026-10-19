@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"rfp-agent/api"
 	"rfp-agent/internal/answers"
 	"rfp-agent/internal/auth"
 	"rfp-agent/internal/chat"
@@ -92,11 +93,12 @@ func main() {
 	chatHandler.RegisterRoutes(protected)
 	authHandler.RegisterProtectedRoutes(protected)
 
-	// Public routes (login/register, health probes) sit on the root mux;
+	// Public routes (login/register, health probes, API docs) sit on the root mux;
 	// everything else falls through the "/" catch-all into the auth-protected mux.
 	mux := http.NewServeMux()
 	authHandler.RegisterRoutes(mux)
 	healthHandler.RegisterRoutes(mux)
+	api.RegisterRoutes(mux)
 	mux.Handle("/", auth.Middleware(secret)(protected))
 
 	srv := &http.Server{
