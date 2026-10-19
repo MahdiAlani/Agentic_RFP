@@ -21,7 +21,7 @@ export default function ChatPanel({ project }) {
   const [error, setError] = useState('')
   const [renamingId, setRenamingId] = useState(null)
   const [pendingDelete, setPendingDelete] = useState(null)
-  const bottomRef = useRef(null)
+  const messagesRef = useRef(null)
 
   // Load (or create) conversations for this project.
   useEffect(() => {
@@ -57,7 +57,9 @@ export default function ChatPanel({ project }) {
   }, [messages, activeId])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Scroll only the message list; scrollIntoView would also scroll the page.
+    const list = messagesRef.current
+    if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
   async function handleSend(e) {
@@ -169,7 +171,7 @@ export default function ChatPanel({ project }) {
 
       <div className="chat-main">
         <Alert message={error} />
-        <div className="messages">
+        <div className="messages" ref={messagesRef}>
           {messages.length === 0 ? (
             <p className="muted chat-empty">
               Ask anything about this RFP — grounded in your workspace knowledge base.
@@ -185,7 +187,6 @@ export default function ChatPanel({ project }) {
               </div>
             ))
           )}
-          <div ref={bottomRef} />
         </div>
 
         <form className="chat-input" onSubmit={handleSend}>

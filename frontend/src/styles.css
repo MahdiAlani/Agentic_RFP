@@ -568,6 +568,7 @@ body {
 .chat-main {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
 }
 
@@ -632,6 +633,12 @@ body {
 }
 
 /* ---------- Project workspace: editor + chat side panel ---------- */
+
+/* The project page fills the viewport so the editor and the chat scroll
+   independently, instead of the whole page scrolling together. */
+.project-view {
+  height: 100vh;
+}
 
 .project-body {
   display: grid;
@@ -839,8 +846,11 @@ body {
   color: var(--ink-soft);
 }
 
+/* A cited passage is a whole chunk (~1,200 characters); cap it and scroll. */
 .qa-sources p {
   margin: 0.2rem 0 0;
+  max-height: 9rem;
+  overflow-y: auto;
   font-size: 0.82rem;
   line-height: 1.5;
   color: var(--ink-soft);
@@ -1031,6 +1041,10 @@ body {
   }
   .project-body.with-chat {
     grid-template-columns: 1fr;
+  }
+  /* Stacked on small screens, so let the page scroll normally. */
+  .project-view {
+    height: auto;
   }
   .project-chat {
     border-left: none;
