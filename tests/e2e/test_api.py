@@ -5,7 +5,7 @@ import zipfile
 
 import pytest
 
-from conftest import API_URL, Client, request
+from conftest import API_URL, Client, request, wait_for
 
 
 class TestAuth:
@@ -151,6 +151,7 @@ class TestChatAndAnswers:
         ws = client.workspace()
         proj = client.project(ws["id"])
         aid = client.post("/answers", {"workspace_id": ws["id"], "project_id": proj["id"], "question": "Q?"}).json()["id"]
+        assert wait_for(lambda: client.get(f"/answers/{aid}").json()["status"] != "pending", timeout=60)
 
         client.patch(f"/answers/{aid}", {"answer_text": "Final answer."})
         r = client.post(f"/answers/{aid}/approve")
