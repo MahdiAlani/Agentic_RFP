@@ -82,6 +82,11 @@ func (q *Queue) EnqueueChatReply(ctx context.Context, messageID, conversationID 
 	})
 }
 
+// Ping checks Redis is reachable (used by the readiness probe).
+func (q *Queue) Ping(ctx context.Context) error {
+	return q.client.Ping(ctx).Err()
+}
+
 func (q *Queue) enqueue(ctx context.Context, stream string, values map[string]any) error {
 	_, err := q.client.XAdd(ctx, &redis.XAddArgs{Stream: stream, Values: values}).Result()
 	return err

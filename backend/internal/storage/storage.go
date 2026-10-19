@@ -115,6 +115,19 @@ func (s *Storage) Remove(ctx context.Context, key string) error {
 	return s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{})
 }
 
+// Ping checks object storage is reachable and the bucket still exists (used by
+// the readiness probe).
+func (s *Storage) Ping(ctx context.Context) error {
+	exists, err := s.client.BucketExists(ctx, s.bucket)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("bucket %q does not exist", s.bucket)
+	}
+	return nil
+}
+
 func getenv(key string) (string, error) {
 	v := os.Getenv(key)
 	if v == "" {

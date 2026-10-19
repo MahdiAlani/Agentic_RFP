@@ -48,7 +48,7 @@ func (m *memRepo) Create(_ context.Context, u *User) (*User, error) {
 }
 
 func (m *memRepo) Update(_ context.Context, u *User) (*User, error) { return u, nil }
-func (m *memRepo) Delete(context.Context, uuid.UUID) error         { return nil }
+func (m *memRepo) Delete(context.Context, uuid.UUID) error          { return nil }
 
 func TestCreateUserValidation(t *testing.T) {
 	cases := map[string]struct{ email, name, password string }{
