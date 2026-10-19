@@ -41,7 +41,9 @@ CONTEXT:
 CITATION_RULES = """
 - Cite the numbered context passage that supports each claim, inline, like [1] or [2, 3].
 - Only cite passages that actually contain the fact. Never cite a passage you did not use.
-- If the context does not cover the question, cite nothing."""
+- If the context does not cover the question, cite nothing.
+- Never refer to "the context", "the passages" or "the documents" in the answer itself.
+- Do not add explanations, benefits or details that the passages do not state."""
 
 
 def _system_prompt(chunks: list[dict], extra_rules: str = "") -> str:

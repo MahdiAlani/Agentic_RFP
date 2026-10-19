@@ -102,9 +102,10 @@ class TestJudge:
     def test_parses_verdicts(self, monkeypatch):
         seen = {}
 
-        def fake_chat(messages, temperature, json_mode):
+        def fake_chat(messages, temperature, json_mode, model):
             seen["prompt"] = messages[0]["content"]
             assert json_mode and temperature == 0
+            assert model == quality.OPENAI_JUDGE_MODEL
             return json.dumps({
                 "grounded": {"pass": True, "reason": "All claims cited."},
                 "answers_question": {"pass": False, "reason": "Ignores retention."},

@@ -59,6 +59,9 @@ MINIO_USE_SSL = os.getenv("MINIO_USE_SSL", "false").lower() == "true"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+# Grades answers (quality checks, eval). A stronger model than the one that
+# drafts, so it catches mistakes rather than sharing them.
+OPENAI_JUDGE_MODEL = os.getenv("OPENAI_JUDGE_MODEL", "gpt-4o")
 
 # --- Chunking / retrieval ---
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1200"))

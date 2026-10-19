@@ -14,6 +14,7 @@ import re
 from dataclasses import asdict, dataclass, field
 
 from src import citations
+from src.config import OPENAI_JUDGE_MODEL
 from src.llm import chat
 
 log = logging.getLogger("quality")
@@ -181,7 +182,8 @@ def judge(d: Draft) -> list[CheckResult]:
                                  passages=passages, others=others)
 
     try:
-        verdicts = json.loads(chat([{"role": "user", "content": prompt}], temperature=0, json_mode=True))
+        verdicts = json.loads(chat([{"role": "user", "content": prompt}], temperature=0, json_mode=True,
+                                   model=OPENAI_JUDGE_MODEL))
     except Exception as e:  # network, quota or malformed JSON: report rather than crash the review
         log.exception("quality judge failed")
         return [CheckResult(name, False, sev, f"judge unavailable: {e}") for name, (sev, _) in JUDGED_CHECKS.items()]

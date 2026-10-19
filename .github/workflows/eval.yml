@@ -1,0 +1,42 @@
+name: Answer eval
+
+# Replays workers/eval/cases.json through the full stack and grades the answers
+# with an LLM. It calls OpenAI (a few cents a run), so it runs on demand rather
+# than on every push. Needs the OPENAI_API_KEY repository secret.
+on:
+  workflow_dispatch:
+    inputs:
+      min_recall:
+        description: Minimum fact recall (0-1)
+        default: "0.8"
+      min_supported:
+        description: Minimum share of fully supported answers (0-1)
+        default: "0.9"
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 60); do curl -sf localhost:8080/readyz && break; sleep 2; done
+
+      # The report is printed and also written to the job summary.
+      - name: Run eval
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: >
+          docker compose run --rm -e GITHUB_STEP_SUMMARY=/summary.md
+          -v "$GITHUB_STEP_SUMMARY:/summary.md"
+          eval python -m eval.run
+          --min-recall ${{ inputs.min_recall }}
+          --min-supported ${{ inputs.min_supported }}
+
+      - name: Service logs
+        if: failure()
+        run: docker compose logs --no-color api workers

@@ -38,15 +38,16 @@ def embed_text(text: str) -> list[float]:
     return embed_texts([text])[0]
 
 
-def chat(messages: list[dict], temperature: float = 0.2, json_mode: bool = False) -> str:
+def chat(messages: list[dict], temperature: float = 0.2, json_mode: bool = False, model: str | None = None) -> str:
     """Run a chat completion and return the reply text.
 
     json_mode constrains the model to reply with a single JSON object; the
-    prompt must still describe the shape it should take.
+    prompt must still describe the shape it should take. model defaults to the
+    drafting model (OPENAI_CHAT_MODEL).
     """
     extra = {"response_format": {"type": "json_object"}} if json_mode else {}
     resp = client().chat.completions.create(
-        model=OPENAI_CHAT_MODEL,
+        model=model or OPENAI_CHAT_MODEL,
         messages=messages,
         temperature=temperature,
         **extra,

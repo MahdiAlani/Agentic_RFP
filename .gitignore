@@ -219,3 +219,5 @@ __marimo__/
 
 .env
 node_modules/
+# Eval harness report
+workers/eval/last-run.json
