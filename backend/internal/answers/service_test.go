@@ -12,10 +12,16 @@ import (
 
 type fakeRepo struct {
 	Repository
-	answers  []*answer
-	cites    map[uuid.UUID][]citation
-	textSet  string
-	statuses map[uuid.UUID]string
+	answers   []*answer
+	cites     map[uuid.UUID][]citation
+	textSet   string
+	byID      *answer
+	statusSet string
+}
+
+func (f *fakeRepo) UpdateStatus(_ context.Context, id uuid.UUID, status string) (*answer, error) {
+	f.statusSet = status
+	return &answer{ID: id, Status: status}, nil
 }
 
 func (f *fakeRepo) GetByProjectID(context.Context, uuid.UUID) ([]*answer, error) {
@@ -27,7 +33,10 @@ func (f *fakeRepo) CitationsByProject(context.Context, uuid.UUID) (map[uuid.UUID
 }
 
 func (f *fakeRepo) GetByID(context.Context, uuid.UUID) (*answer, error) {
-	return nil, pgx.ErrNoRows
+	if f.byID == nil {
+		return nil, pgx.ErrNoRows
+	}
+	return f.byID, nil
 }
 
 func (f *fakeRepo) UpdateText(_ context.Context, id uuid.UUID, text string) (*answer, error) {
@@ -71,13 +80,14 @@ func TestUpdateAnswerText(t *testing.T) {
 	}
 }
 
-// FillProject must skip answers that are finished or already queued, so
-// clicking "fill" twice never double-bills the model. With nothing to queue it
-// returns before touching Redis (the queue here is nil).
-func TestFillProjectSkipsDoneAndPending(t *testing.T) {
+// FillProject must skip answers that are finished, approved or already queued,
+// so clicking "fill" twice never double-bills the model. With nothing to queue
+// it returns before touching Redis (the queue here is nil).
+func TestFillProjectSkipsFinishedAndPending(t *testing.T) {
 	repo := &fakeRepo{answers: []*answer{
 		{ID: uuid.New(), Status: "done"},
 		{ID: uuid.New(), Status: "pending"},
+		{ID: uuid.New(), Status: "approved"},
 	}}
 	n, err := NewService(repo, nil).FillProject(context.Background(), uuid.New())
 	if err != nil || n != 0 {
@@ -100,6 +110,36 @@ func TestListProjectAnswersAttachesCitations(t *testing.T) {
 	}
 	if len(got[1].Citations) != 0 {
 		t.Fatalf("answer 2 citations = %+v, want none", got[1].Citations)
+	}
+}
+
+func TestApproveAnswer(t *testing.T) {
+	text, blank := "Drafted.", "  "
+	cases := map[string]struct {
+		existing *answer
+		wantErr  error
+	}{
+		"drafted":          {&answer{Status: "done", AnswerText: &text}, nil},
+		"missing":          {nil, ErrNotFound},
+		"still generating": {&answer{Status: "pending", AnswerText: &text}, ErrInvalidInput},
+		"never drafted":    {&answer{Status: "new"}, ErrInvalidInput},
+		"blank text":       {&answer{Status: "done", AnswerText: &blank}, ErrInvalidInput},
+		"already approved": {&answer{Status: "approved", AnswerText: &text}, ErrInvalidInput},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := &fakeRepo{byID: tc.existing}
+			_, err := NewService(repo, nil).ApproveAnswer(context.Background(), uuid.New())
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tc.wantErr)
+			}
+			if tc.wantErr == nil && repo.statusSet != "approved" {
+				t.Fatalf("status set to %q, want approved", repo.statusSet)
+			}
+			if tc.wantErr != nil && repo.statusSet != "" {
+				t.Fatalf("status changed to %q on a rejected approval", repo.statusSet)
+			}
+		})
 	}
 }
 

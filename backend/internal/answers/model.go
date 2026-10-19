@@ -17,7 +17,7 @@ type citation struct {
 }
 
 // answer is one question from an RFP plus its (AI-drafted, user-editable) reply.
-// Status: 'new' -> 'pending' -> 'done', or 'failed'.
+// Status: 'new' -> 'pending' -> 'done' -> 'approved', or 'failed'.
 type answer struct {
 	ID          uuid.UUID  `json:"id"`
 	WorkspaceID uuid.UUID  `json:"workspace_id"`

@@ -476,6 +476,11 @@ body {
   color: var(--success);
 }
 
+.badge.approved {
+  background: var(--success);
+  color: #fff;
+}
+
 .badge.failed {
   background: #f3d6cf;
   color: var(--error);

@@ -23,6 +23,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /answers/{id}", h.GetAnswer)
 	mux.HandleFunc("PATCH /answers/{id}", h.UpdateAnswer)
 	mux.HandleFunc("POST /answers/{id}/regenerate", h.RegenerateAnswer)
+	mux.HandleFunc("POST /answers/{id}/approve", h.ApproveAnswer)
 	mux.HandleFunc("GET /workspaces/{workspaceID}/answers", h.ListAnswers)
 	mux.HandleFunc("GET /projects/{projectID}/answers", h.ListProjectAnswers)
 	mux.HandleFunc("POST /projects/{projectID}/answers/fill", h.FillProject)
@@ -78,6 +79,22 @@ func (h *Handler) RegenerateAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a, err := h.svc.RegenerateAnswer(r.Context(), id)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (h *Handler) ApproveAnswer(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	a, err := h.svc.ApproveAnswer(r.Context(), id)
 	if err != nil {
 		writeError(w, r, err)
 		return

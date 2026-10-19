@@ -5,6 +5,7 @@ import {
   createAnswer,
   updateAnswer,
   regenerateAnswer,
+  approveAnswer,
   deleteAnswer,
   fillProjectAnswers,
   extractQuestions,
@@ -51,7 +52,8 @@ export default function RfpEditor({ project }) {
   }, [answers, project.id])
 
   const rfpDocs = documents.filter((d) => d.document_type === 'rfp')
-  const answered = answers.filter((a) => a.status === 'done').length
+  const answered = answers.filter((a) => a.status === 'done' || a.status === 'approved').length
+  const approved = answers.filter((a) => a.status === 'approved').length
 
   async function handleExtract(documentID) {
     setError('')
@@ -111,21 +113,12 @@ export default function RfpEditor({ project }) {
     }
   }
 
-  async function handleSave(id, text) {
+  // Runs an answer-changing API call and swaps the returned row into the list.
+  async function updateRow(call) {
     setError('')
     try {
-      const updated = await updateAnswer(id, text)
-      setAnswers((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
-    } catch (err) {
-      setError(err.message)
-    }
-  }
-
-  async function handleRegenerate(id) {
-    setError('')
-    try {
-      const updated = await regenerateAnswer(id)
-      setAnswers((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
+      const updated = await call()
+      setAnswers((prev) => prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a)))
     } catch (err) {
       setError(err.message)
     }
@@ -164,7 +157,7 @@ export default function RfpEditor({ project }) {
         <div className="editor-stats">
           {answers.length > 0 && (
             <span className="muted small">
-              {answered} of {answers.length} answered
+              {answered} of {answers.length} answered · {approved} approved
             </span>
           )}
         </div>
@@ -223,8 +216,9 @@ export default function RfpEditor({ project }) {
             <QuestionRow
               key={a.id}
               answer={a}
-              onSave={(text) => handleSave(a.id, text)}
-              onRegenerate={() => handleRegenerate(a.id)}
+              onSave={(text) => updateRow(() => updateAnswer(a.id, text))}
+              onRegenerate={() => updateRow(() => regenerateAnswer(a.id))}
+              onApprove={() => updateRow(() => approveAnswer(a.id))}
               onDelete={() => setPendingDelete(a)}
             />
           ))}
@@ -265,7 +259,7 @@ function statusOf(answer) {
 const STATUS_LABELS = { 'needs-input': 'needs input' }
 
 // One question: the prompt, an editable answer, citations and per-row actions.
-function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
+function QuestionRow({ answer, onSave, onRegenerate, onApprove, onDelete }) {
   const [draft, setDraft] = useState(answer.answer_text || '')
   const [dirty, setDirty] = useState(false)
   const [showSources, setShowSources] = useState(false)
@@ -338,6 +332,11 @@ function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
           <button className="link" onClick={onRegenerate} disabled={pending}>
             {answer.answer_text ? 'Redraft with AI' : 'Draft with AI'}
           </button>
+          {answer.status === 'done' && !dirty && (
+            <button className="link" onClick={onApprove}>
+              Approve
+            </button>
+          )}
         </div>
       </div>
 

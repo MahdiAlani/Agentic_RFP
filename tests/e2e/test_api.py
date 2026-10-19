@@ -144,6 +144,20 @@ class TestChatAndAnswers:
         got = client.get(f"/answers/{a.json()['id']}").json()
         assert got["answer_text"] == "Hand-written answer." and got["status"] == "done"
 
+    def test_approval_flow(self, client):
+        ws = client.workspace()
+        proj = client.project(ws["id"])
+        aid = client.post("/answers", {"workspace_id": ws["id"], "project_id": proj["id"], "question": "Q?"}).json()["id"]
+
+        client.patch(f"/answers/{aid}", {"answer_text": "Final answer."})
+        r = client.post(f"/answers/{aid}/approve")
+        assert r.status == 200 and r.json()["status"] == "approved"
+        assert client.post(f"/answers/{aid}/approve").status == 400  # already approved
+
+        # Editing an approved answer sends it back for review.
+        client.patch(f"/answers/{aid}", {"answer_text": "Changed after sign-off."})
+        assert client.get(f"/answers/{aid}").json()["status"] == "done"
+
     def test_deleting_workspace_cascades(self, client):
         ws = client.workspace()
         proj = client.project(ws["id"])

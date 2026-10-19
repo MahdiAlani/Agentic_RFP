@@ -180,6 +180,11 @@ export function regenerateAnswer(id) {
   return request('POST', `/answers/${id}/regenerate`)
 }
 
+// Sign off a drafted answer. Editing it afterwards returns it to review.
+export function approveAnswer(id) {
+  return request('POST', `/answers/${id}/approve`)
+}
+
 export function deleteAnswer(id) {
   return request('DELETE', `/answers/${id}`)
 }
