@@ -24,6 +24,7 @@ type Repository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	CitationsByAnswer(ctx context.Context, answerID uuid.UUID) ([]citation, error)
 	CitationsByProject(ctx context.Context, projectID uuid.UUID) (map[uuid.UUID][]citation, error)
+	ProjectName(ctx context.Context, projectID uuid.UUID) (string, error)
 }
 
 // db
@@ -128,6 +129,13 @@ func (r *postgresRepo) Delete(ctx context.Context, id uuid.UUID) error {
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// ProjectName is used to title an exported response.
+func (r *postgresRepo) ProjectName(ctx context.Context, projectID uuid.UUID) (string, error) {
+	var name string
+	err := r.db.Pool.QueryRow(ctx, `SELECT name FROM projects WHERE id = $1`, projectID).Scan(&name)
+	return name, err
 }
 
 // citationSelect returns each citation with its document name and the cited

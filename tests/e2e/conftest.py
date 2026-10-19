@@ -21,9 +21,14 @@ API_URL = os.getenv("API_URL", "http://localhost:8080").rstrip("/")
 
 
 class Response:
-    def __init__(self, status: int, body: str):
+    def __init__(self, status: int, body: bytes, headers=None):
         self.status = status
-        self.text = body
+        self.body = body
+        self.headers = headers or {}
+
+    @property
+    def text(self) -> str:
+        return self.body.decode()
 
     def json(self):
         return json.loads(self.text)
@@ -37,9 +42,9 @@ def request(method, url, *, json_body=None, data=None, headers=None, timeout=30)
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return Response(r.status, r.read().decode())
+            return Response(r.status, r.read(), r.headers)
     except urllib.error.HTTPError as e:
-        return Response(e.code, e.read().decode())
+        return Response(e.code, e.read(), e.headers)
 
 
 class Client:

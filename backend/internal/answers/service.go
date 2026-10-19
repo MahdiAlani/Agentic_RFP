@@ -26,6 +26,7 @@ type Service interface {
 	GetAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
 	ListAnswers(ctx context.Context, workspaceID uuid.UUID) ([]*answer, error)
 	ListProjectAnswers(ctx context.Context, projectID uuid.UUID) ([]*answer, error)
+	ExportProject(ctx context.Context, projectID uuid.UUID) (string, []*answer, error)
 	UpdateAnswerText(ctx context.Context, id uuid.UUID, text string) (*answer, error)
 	RegenerateAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
 	ApproveAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
@@ -108,6 +109,20 @@ func (s *service) ListProjectAnswers(ctx context.Context, projectID uuid.UUID) (
 		a.Citations = cites[a.ID]
 	}
 	return as, nil
+}
+
+// ExportProject returns the project's name and its answers (with citations),
+// everything needed to lay out the response document.
+func (s *service) ExportProject(ctx context.Context, projectID uuid.UUID) (string, []*answer, error) {
+	name, err := s.repo.ProjectName(ctx, projectID)
+	if err != nil {
+		return "", nil, mapDBError(err)
+	}
+	as, err := s.ListProjectAnswers(ctx, projectID)
+	if err != nil {
+		return "", nil, err
+	}
+	return name, as, nil
 }
 
 // UpdateAnswerText saves a user's edit, which also marks the answer done.

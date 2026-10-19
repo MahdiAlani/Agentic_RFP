@@ -9,6 +9,7 @@ import {
   deleteAnswer,
   fillProjectAnswers,
   extractQuestions,
+  exportProject,
 } from '../api'
 import Alert from './Alert.jsx'
 import InlineEdit from './InlineEdit.jsx'
@@ -136,17 +137,13 @@ export default function RfpEditor({ project }) {
     }
   }
 
-  function exportText() {
-    const body = answers
-      .map((a, i) => `${i + 1}. ${a.question}\n\n${a.answer_text || '[unanswered]'}`)
-      .join('\n\n---\n\n')
-    const blob = new Blob([body], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${project.name.replace(/[^\w.-]+/g, '_')}-responses.txt`
-    link.click()
-    URL.revokeObjectURL(url)
+  async function handleExport() {
+    setError('')
+    try {
+      await exportProject(project.id)
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
   if (loading) return <p className="muted">Loading…</p>
@@ -185,8 +182,8 @@ export default function RfpEditor({ project }) {
               <button className="ghost" onClick={handleFillAll} disabled={busy}>
                 Draft all with AI
               </button>
-              <button className="ghost" onClick={exportText}>
-                Export
+              <button className="ghost" onClick={handleExport}>
+                Export to Word
               </button>
             </>
           )}
