@@ -213,17 +213,6 @@ kubectl apply -f k8s/
 `embed` scales to zero between uploads; `generate` keeps one replica warm
 because chat is user-facing. On shutdown, workers finish in-flight jobs before
 exiting.
-
-## Known gaps
-
-- **Per-user authorization on by-ID routes** ([#2](https://github.com/MahdiAlani/Agentic_RFP/issues/2)).
-  Only workspace list and create are scoped to the caller today. Pinned by
-  `tests/e2e/test_isolation.py` (strict xfail).
-- Spending limits on model calls ([#4](https://github.com/MahdiAlani/Agentic_RFP/issues/4)),
-  upload size and type limits ([#5](https://github.com/MahdiAlani/Agentic_RFP/issues/5)),
-  streaming chat replies ([#6](https://github.com/MahdiAlani/Agentic_RFP/issues/6)),
-  and one empty chat at a time ([#3](https://github.com/MahdiAlani/Agentic_RFP/issues/3)).
-
 ## License
 
 [MIT](LICENSE)
