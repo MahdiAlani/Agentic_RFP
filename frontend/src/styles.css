@@ -808,6 +808,40 @@ body {
   color: var(--ink-soft);
 }
 
+.badge.needs-input {
+  background: #f3e6c4;
+  color: #8a6d1e;
+}
+
+/* Cited passages, numbered to match the [n] markers in the answer. */
+.qa-sources {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.qa-sources li {
+  border-left: 2px solid var(--line);
+  padding-left: 0.75rem;
+}
+
+.qa-source-ref {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.qa-sources p {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  white-space: pre-line;
+}
+
 /* Conversation picker at the top of the chat panel. */
 .conv-bar {
   display: flex;

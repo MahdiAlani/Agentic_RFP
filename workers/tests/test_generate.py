@@ -30,17 +30,31 @@ def model(monkeypatch):
 class TestAnswer:
     JOB = {"kind": "answer", "answer_id": "ans-1", "workspace_id": "ws-1", "question": "How is data encrypted?"}
 
-    def test_writes_answer_and_one_citation_per_chunk(self, model, fake_conn, use_conn):
+    def test_stores_only_cited_passages_numbered_like_the_text(self, model, monkeypatch, fake_conn, use_conn):
         conn = use_conn(generate_worker, fake_conn({"FROM answers": [("proj-1",)]}))
+        monkeypatch.setattr(generate_worker, "chat", lambda m: model["chat"].append(m) or "TLS 1.3 [2]. AES [2].")
         handle_generate(self.JOB)
 
         assert model["search"] == [("ws-1", "How is data encrypted?", "proj-1")]
         system = model["chat"][0][0]["content"]
         assert "[1] sec.pdf (chunk 0)" in system and "AES-256 at rest." in system
+        assert "Cite the numbered context passage" in system
 
-        assert conn.statements("SET answer_text") == [("Grounded reply.", "ans-1")]
+        # Passage [2] was the only one used, so it becomes [1].
+        assert conn.statements("SET answer_text") == [("TLS 1.3 [1]. AES [1].", "ans-1")]
         (_, rows), = conn.batches
-        assert rows == [("ans-1", "doc-a", "0"), ("ans-1", "doc-b", "4")]
+        assert rows == [("ans-1", "doc-b", "4", 1)]
+
+    def test_regenerating_replaces_old_citations(self, model, fake_conn, use_conn):
+        conn = use_conn(generate_worker, fake_conn({"FROM answers": [("proj-1",)]}))
+        handle_generate(self.JOB)
+        assert conn.statements("DELETE FROM answer_citations") == [("ans-1",)]
+
+    def test_uncited_answer_stores_no_citations(self, model, fake_conn, use_conn):
+        conn = use_conn(generate_worker, fake_conn({"FROM answers": [("proj-1",)]}))
+        handle_generate(self.JOB)  # stub reply "Grounded reply." has no markers
+        (_, rows), = conn.batches
+        assert rows == []
 
     def test_kind_defaults_to_answer(self, model, fake_conn, use_conn):
         conn = use_conn(generate_worker, fake_conn({"FROM answers": [("proj-1",)]}))

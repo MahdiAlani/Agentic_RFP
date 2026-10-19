@@ -130,37 +130,33 @@ func (r *postgresRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// citationSelect returns each citation with its document name and the cited
+// passage, ordered to match the answer's [n] markers. The chunk join is a LEFT
+// JOIN: a citation outlives its passage text if the document is re-embedded.
+const citationSelect = `
+	SELECT c.answer_id, c.document_id, d.file_name, c.chunk_ref, c.position, COALESCE(ch.content, '')
+	FROM answer_citations c
+	JOIN answers a ON a.id = c.answer_id
+	JOIN documents d ON d.id = c.document_id
+	LEFT JOIN document_chunks ch
+		ON ch.document_id = c.document_id AND ch.chunk_index::text = c.chunk_ref`
+
 func (r *postgresRepo) CitationsByAnswer(ctx context.Context, answerID uuid.UUID) ([]citation, error) {
-	rows, err := r.db.Pool.Query(ctx,
-		`SELECT c.document_id, d.file_name, c.chunk_ref
-		 FROM answer_citations c
-		 JOIN documents d ON d.id = c.document_id
-		 WHERE c.answer_id = $1`, answerID)
+	byAnswer, err := r.citations(ctx, citationSelect+` WHERE c.answer_id = $1 ORDER BY c.position`, answerID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var cites []citation
-	for rows.Next() {
-		var c citation
-		if err := rows.Scan(&c.DocumentID, &c.FileName, &c.ChunkRef); err != nil {
-			return nil, err
-		}
-		cites = append(cites, c)
-	}
-	return cites, rows.Err()
+	return byAnswer[answerID], nil
 }
 
 // CitationsByProject fetches every citation for a project's answers in one
 // query, keyed by answer id, so listing doesn't need a query per row.
 func (r *postgresRepo) CitationsByProject(ctx context.Context, projectID uuid.UUID) (map[uuid.UUID][]citation, error) {
-	rows, err := r.db.Pool.Query(ctx,
-		`SELECT c.answer_id, c.document_id, d.file_name, c.chunk_ref
-		 FROM answer_citations c
-		 JOIN answers a ON a.id = c.answer_id
-		 JOIN documents d ON d.id = c.document_id
-		 WHERE a.project_id = $1`, projectID)
+	return r.citations(ctx, citationSelect+` WHERE a.project_id = $1 ORDER BY c.answer_id, c.position`, projectID)
+}
+
+func (r *postgresRepo) citations(ctx context.Context, sql string, args ...any) (map[uuid.UUID][]citation, error) {
+	rows, err := r.db.Pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +166,7 @@ func (r *postgresRepo) CitationsByProject(ctx context.Context, projectID uuid.UU
 	for rows.Next() {
 		var answerID uuid.UUID
 		var c citation
-		if err := rows.Scan(&answerID, &c.DocumentID, &c.FileName, &c.ChunkRef); err != nil {
+		if err := rows.Scan(&answerID, &c.DocumentID, &c.FileName, &c.ChunkRef, &c.Position, &c.Content); err != nil {
 			return nil, err
 		}
 		byAnswer[answerID] = append(byAnswer[answerID], c)

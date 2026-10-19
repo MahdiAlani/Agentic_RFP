@@ -255,10 +255,20 @@ export default function RfpEditor({ project }) {
   )
 }
 
+// A finished answer with no sources wasn't covered by the knowledge base, so a
+// person has to supply it.
+function statusOf(answer) {
+  if (answer.status === 'done' && !answer.citations?.length) return 'needs-input'
+  return answer.status
+}
+
+const STATUS_LABELS = { 'needs-input': 'needs input' }
+
 // One question: the prompt, an editable answer, citations and per-row actions.
 function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
   const [draft, setDraft] = useState(answer.answer_text || '')
   const [dirty, setDirty] = useState(false)
+  const [showSources, setShowSources] = useState(false)
   const taRef = useRef(null)
 
   // Adopt worker-generated text, unless the user is mid-edit.
@@ -275,6 +285,8 @@ function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
   }, [draft])
 
   const pending = answer.status === 'pending'
+  const status = statusOf(answer)
+  const citations = answer.citations || []
 
   function save() {
     if (!dirty || !draft.trim()) return
@@ -287,7 +299,7 @@ function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
       <div className="qa-question">
         <p>{answer.question}</p>
         <div className="row-actions">
-          <span className={`badge ${answer.status}`}>{answer.status}</span>
+          <span className={`badge ${status}`}>{STATUS_LABELS[status] || status}</span>
           <button className="icon-btn danger" title="Delete question" onClick={onDelete}>
             <TrashIcon />
           </button>
@@ -311,13 +323,11 @@ function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
       )}
 
       <div className="qa-foot">
-        {answer.citations?.length > 0 && (
-          <span className="muted small">
-            Sources:{' '}
-            {answer.citations
-              .map((c) => `${c.file_name} (c.${c.chunk_ref})`)
-              .join(', ')}
-          </span>
+        {citations.length > 0 && (
+          <button className="link" onClick={() => setShowSources((v) => !v)}>
+            {showSources ? 'Hide' : 'Show'} {citations.length} source
+            {citations.length === 1 ? '' : 's'}
+          </button>
         )}
         <div className="qa-foot-actions">
           {dirty && (
@@ -330,6 +340,19 @@ function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
           </button>
         </div>
       </div>
+
+      {showSources && (
+        <ol className="qa-sources">
+          {citations.map((c) => (
+            <li key={c.position}>
+              <span className="qa-source-ref">
+                [{c.position}] {c.file_name}
+              </span>
+              <p>{c.content || 'Passage no longer available (document re-indexed).'}</p>
+            </li>
+          ))}
+        </ol>
+      )}
     </li>
   )
 }
