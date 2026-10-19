@@ -1,3 +1,23 @@
+# Full stack:   docker compose up --build        -> http://localhost:5173
+# Infra only:   docker compose up -d postgres redis minio   (see start.ps1)
+#
+# Values come from the repo-root .env when present, with dev defaults below.
+
+# Connection settings shared by the API and the workers. Hostnames are the
+# service names on the compose network, not localhost.
+x-app-env: &app-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  POSTGRES_DB: ${POSTGRES_DB:-app}
+  REDIS_ADDR: redis:6379
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+  MINIO_BUCKET: ${MINIO_BUCKET:-rfp-documents}
+  MINIO_USE_SSL: "false"
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -38,8 +58,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
       # Allow browser (cross-origin) presigned PUT/GET uploads in dev.
       MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
@@ -49,6 +69,78 @@ services:
       - minio_data:/data
     # No healthcheck: the image has no shell or curl. Probe
     # http://localhost:9000/minio/health/live from the host instead.
+
+  # Applies migrations/ and exits. Re-running is a no-op once up to date.
+  # Other commands: docker compose run --rm migrate version | down 1 | force N
+  migrate:
+    image: migrate/migrate:v4.18.3
+    entrypoint:
+      - migrate
+      - -path=/migrations
+      - -database=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app}?sslmode=disable
+    command: ["up"]
+    volumes:
+      - ./migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      # Presigned upload/download URLs are opened by the browser, so they must
+      # be signed for the host the browser sees.
+      MINIO_PUBLIC_ENDPOINT: localhost:9000
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  workers:
+    build: ./workers
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+      OPENAI_EMBED_MODEL: ${OPENAI_EMBED_MODEL:-text-embedding-3-small}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Loads the Corvane demo data (demo/) through the API:
+  #   docker compose run --rm seed
+  seed:
+    build: ./workers
+    profiles: ["tools"]
+    command: ["python", "seed.py"]
+    environment:
+      API_URL: http://api:8080
+      DEMO_DIR: /demo
+      STORAGE_INTERNAL_URL: http://minio:9000
+    volumes:
+      - ./demo:/demo:ro
+    depends_on:
+      - api
+      - workers
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
 
 volumes:
   postgres_data:
