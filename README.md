@@ -16,7 +16,8 @@ S3-compatible storage · **React** · **MCP** server for AI agents · LLM-graded
 
 ## Try it
 
-Needs Docker and an OpenAI API key.
+Needs Docker. Set an OpenAI API key for real model-backed answers; without one,
+workers use deterministic mock chat and embeddings (for CI and keyless runs).
 
 ```bash
 cp .env.example .env              # then set OPENAI_API_KEY
@@ -188,7 +189,7 @@ tests/e2e/   End-to-end tests against a running stack
 | Suite | Needs | Run |
 |---|---|---|
 | Go unit tests | nothing | `cd backend && go test ./...` |
-| Worker unit tests | nothing (Postgres, Redis, MinIO and OpenAI are faked) | `cd workers && pip install -r requirements-dev.txt && pytest` |
+| Worker unit tests | nothing (Postgres, Redis and MinIO are faked; missing OpenAI keys use deterministic mocks) | `cd workers && pip install -r requirements-dev.txt && pytest` |
 | End-to-end | the running stack | `pytest tests/e2e` |
 | + LLM pipeline | the stack and an OpenAI key | `RUN_LLM_E2E=1 pytest tests/e2e` |
 | Answer eval | the stack and an OpenAI key | `docker compose run --rm eval` |

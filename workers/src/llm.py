@@ -1,7 +1,9 @@
 """OpenAI access: embeddings + chat completions.
 """
 
+import hashlib
 import logging
+import re
 
 from openai import OpenAI
 
@@ -9,6 +11,7 @@ from src.config import OPENAI_API_KEY, OPENAI_CHAT_MODEL, OPENAI_EMBED_MODEL
 
 log = logging.getLogger("llm")
 EMBED_BATCH = 100
+EMBED_DIMENSIONS = 1536
 
 _client: OpenAI | None = None
 
@@ -24,6 +27,10 @@ def client() -> OpenAI:
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """Embed a list of strings, preserving input order."""
+    if not OPENAI_API_KEY:
+        log.info("OPENAI_API_KEY is not set; using deterministic mock embeddings")
+        return [_mock_embedding(text) for text in texts]
+
     vectors: list[list[float]] = []
     for start in range(0, len(texts), EMBED_BATCH):
         batch = texts[start : start + EMBED_BATCH]
@@ -31,6 +38,18 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         # The API may return items out of order; `index` maps back to the input.
         vectors.extend(item.embedding for item in sorted(resp.data, key=lambda d: d.index))
     return vectors
+
+
+def _mock_embedding(text: str) -> list[float]:
+    """Create a stable, word-based vector for keyless local and CI runs."""
+    vector = [0.0] * EMBED_DIMENSIONS
+    for word in re.findall(r"\w+", text.casefold()):
+        digest = hashlib.sha256(word.encode("utf-8")).digest()
+        index = int.from_bytes(digest[:4], "big") % EMBED_DIMENSIONS
+        vector[index] += 1.0 if digest[4] & 1 else -1.0
+
+    magnitude = sum(value * value for value in vector) ** 0.5
+    return [value / magnitude for value in vector] if magnitude else vector
 
 
 def embed_text(text: str) -> list[float]:
@@ -45,6 +64,10 @@ def chat(messages: list[dict], temperature: float = 0.2, json_mode: bool = False
     prompt must still describe the shape it should take. model defaults to the
     drafting model (OPENAI_CHAT_MODEL).
     """
+    if not OPENAI_API_KEY:
+        log.info("OPENAI_API_KEY is not set; using deterministic mock chat")
+        return "{}" if json_mode else "Mock response (OPENAI_API_KEY is not configured)."
+
     extra = {"response_format": {"type": "json_object"}} if json_mode else {}
     resp = client().chat.completions.create(
         model=model or OPENAI_CHAT_MODEL,
