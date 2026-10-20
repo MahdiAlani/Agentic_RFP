@@ -5,9 +5,11 @@ import {
   createAnswer,
   updateAnswer,
   regenerateAnswer,
+  approveAnswer,
   deleteAnswer,
   fillProjectAnswers,
   extractQuestions,
+  exportProject,
 } from '../api'
 import Alert from './Alert.jsx'
 import InlineEdit from './InlineEdit.jsx'
@@ -51,7 +53,8 @@ export default function RfpEditor({ project }) {
   }, [answers, project.id])
 
   const rfpDocs = documents.filter((d) => d.document_type === 'rfp')
-  const answered = answers.filter((a) => a.status === 'done').length
+  const answered = answers.filter((a) => a.status === 'done' || a.status === 'approved').length
+  const approved = answers.filter((a) => a.status === 'approved').length
 
   async function handleExtract(documentID) {
     setError('')
@@ -111,21 +114,12 @@ export default function RfpEditor({ project }) {
     }
   }
 
-  async function handleSave(id, text) {
+  // Runs an answer-changing API call and swaps the returned row into the list.
+  async function updateRow(call) {
     setError('')
     try {
-      const updated = await updateAnswer(id, text)
-      setAnswers((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
-    } catch (err) {
-      setError(err.message)
-    }
-  }
-
-  async function handleRegenerate(id) {
-    setError('')
-    try {
-      const updated = await regenerateAnswer(id)
-      setAnswers((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
+      const updated = await call()
+      setAnswers((prev) => prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a)))
     } catch (err) {
       setError(err.message)
     }
@@ -143,17 +137,13 @@ export default function RfpEditor({ project }) {
     }
   }
 
-  function exportText() {
-    const body = answers
-      .map((a, i) => `${i + 1}. ${a.question}\n\n${a.answer_text || '[unanswered]'}`)
-      .join('\n\n---\n\n')
-    const blob = new Blob([body], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${project.name.replace(/[^\w.-]+/g, '_')}-responses.txt`
-    link.click()
-    URL.revokeObjectURL(url)
+  async function handleExport() {
+    setError('')
+    try {
+      await exportProject(project.id)
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
   if (loading) return <p className="muted">Loading…</p>
@@ -164,7 +154,7 @@ export default function RfpEditor({ project }) {
         <div className="editor-stats">
           {answers.length > 0 && (
             <span className="muted small">
-              {answered} of {answers.length} answered
+              {answered} of {answers.length} answered · {approved} approved
             </span>
           )}
         </div>
@@ -192,8 +182,8 @@ export default function RfpEditor({ project }) {
               <button className="ghost" onClick={handleFillAll} disabled={busy}>
                 Draft all with AI
               </button>
-              <button className="ghost" onClick={exportText}>
-                Export
+              <button className="ghost" onClick={handleExport}>
+                Export to Word
               </button>
             </>
           )}
@@ -223,8 +213,9 @@ export default function RfpEditor({ project }) {
             <QuestionRow
               key={a.id}
               answer={a}
-              onSave={(text) => handleSave(a.id, text)}
-              onRegenerate={() => handleRegenerate(a.id)}
+              onSave={(text) => updateRow(() => updateAnswer(a.id, text))}
+              onRegenerate={() => updateRow(() => regenerateAnswer(a.id))}
+              onApprove={() => updateRow(() => approveAnswer(a.id))}
               onDelete={() => setPendingDelete(a)}
             />
           ))}
@@ -255,10 +246,20 @@ export default function RfpEditor({ project }) {
   )
 }
 
+// A finished answer with no sources wasn't covered by the knowledge base, so a
+// person has to supply it.
+function statusOf(answer) {
+  if (answer.status === 'done' && !answer.citations?.length) return 'needs-input'
+  return answer.status
+}
+
+const STATUS_LABELS = { 'needs-input': 'needs input' }
+
 // One question: the prompt, an editable answer, citations and per-row actions.
-function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
+function QuestionRow({ answer, onSave, onRegenerate, onApprove, onDelete }) {
   const [draft, setDraft] = useState(answer.answer_text || '')
   const [dirty, setDirty] = useState(false)
+  const [showSources, setShowSources] = useState(false)
   const taRef = useRef(null)
 
   // Adopt worker-generated text, unless the user is mid-edit.
@@ -275,6 +276,8 @@ function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
   }, [draft])
 
   const pending = answer.status === 'pending'
+  const status = statusOf(answer)
+  const citations = answer.citations || []
 
   function save() {
     if (!dirty || !draft.trim()) return
@@ -287,7 +290,7 @@ function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
       <div className="qa-question">
         <p>{answer.question}</p>
         <div className="row-actions">
-          <span className={`badge ${answer.status}`}>{answer.status}</span>
+          <span className={`badge ${status}`}>{STATUS_LABELS[status] || status}</span>
           <button className="icon-btn danger" title="Delete question" onClick={onDelete}>
             <TrashIcon />
           </button>
@@ -311,13 +314,11 @@ function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
       )}
 
       <div className="qa-foot">
-        {answer.citations?.length > 0 && (
-          <span className="muted small">
-            Sources:{' '}
-            {answer.citations
-              .map((c) => `${c.file_name} (c.${c.chunk_ref})`)
-              .join(', ')}
-          </span>
+        {citations.length > 0 && (
+          <button className="link" onClick={() => setShowSources((v) => !v)}>
+            {showSources ? 'Hide' : 'Show'} {citations.length} source
+            {citations.length === 1 ? '' : 's'}
+          </button>
         )}
         <div className="qa-foot-actions">
           {dirty && (
@@ -328,8 +329,26 @@ function QuestionRow({ answer, onSave, onRegenerate, onDelete }) {
           <button className="link" onClick={onRegenerate} disabled={pending}>
             {answer.answer_text ? 'Redraft with AI' : 'Draft with AI'}
           </button>
+          {answer.status === 'done' && !dirty && (
+            <button className="link" onClick={onApprove}>
+              Approve
+            </button>
+          )}
         </div>
       </div>
+
+      {showSources && (
+        <ol className="qa-sources">
+          {citations.map((c) => (
+            <li key={c.position}>
+              <span className="qa-source-ref">
+                [{c.position}] {c.file_name}
+              </span>
+              <p>{c.content || 'Passage no longer available (document re-indexed).'}</p>
+            </li>
+          ))}
+        </ol>
+      )}
     </li>
   )
 }

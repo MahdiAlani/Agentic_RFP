@@ -18,32 +18,20 @@ foreach ($port in 8080, 5173) {
 }
 
 Write-Host "==> Starting infra containers (postgres, redis, minio)..." -ForegroundColor Cyan
-docker compose up -d
+docker compose up -d postgres redis minio
 if ($LASTEXITCODE -ne 0) { Write-Host "docker compose up failed." -ForegroundColor Red; exit 1 }
 
-Write-Host "==> Waiting for Postgres to be ready..." -ForegroundColor Cyan
-$ready = $false
-for ($i = 0; $i -lt 30; $i++) {
-    docker compose exec -T postgres pg_isready -U postgres 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { $ready = $true; break }
-    Start-Sleep -Seconds 1
-}
-if (-not $ready) {
-    Write-Host "Postgres did not become ready in time." -ForegroundColor Red
+# The migrate service waits for Postgres to be healthy, then applies anything new.
+Write-Host "==> Applying migrations..." -ForegroundColor Cyan
+docker compose run --rm migrate
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Migrations failed. If this database was set up before the migrate service existed," -ForegroundColor Red
+    Write-Host "record its current version once with:  docker compose run --rm migrate force 9" -ForegroundColor Red
     exit 1
 }
 
 # Quiet the collation-version warning that appears after switching Postgres images.
 docker compose exec -T postgres psql -U postgres -d app -c "ALTER DATABASE app REFRESH COLLATION VERSION;" 2>$null | Out-Null
-
-Write-Host "==> Applying migrations..." -ForegroundColor Cyan
-Get-ChildItem "$root/migrations/*.up.sql" | Sort-Object Name | ForEach-Object {
-    Write-Host "    - $($_.Name)"
-    Get-Content $_.FullName | docker compose exec -T postgres psql -U postgres -d app 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "      (already applied or failed - continuing)" -ForegroundColor Yellow
-    }
-}
 
 Write-Host "==> Launching API (backend) in a new window..." -ForegroundColor Cyan
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$root/backend'; go run ./cmd/api"

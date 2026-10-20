@@ -26,8 +26,10 @@ type Service interface {
 	GetAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
 	ListAnswers(ctx context.Context, workspaceID uuid.UUID) ([]*answer, error)
 	ListProjectAnswers(ctx context.Context, projectID uuid.UUID) ([]*answer, error)
+	ExportProject(ctx context.Context, projectID uuid.UUID) (string, []*answer, error)
 	UpdateAnswerText(ctx context.Context, id uuid.UUID, text string) (*answer, error)
 	RegenerateAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
+	ApproveAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
 	FillProject(ctx context.Context, projectID uuid.UUID) (int, error)
 	ExtractQuestions(ctx context.Context, workspaceID, projectID, documentID uuid.UUID) error
 	DeleteAnswer(ctx context.Context, id uuid.UUID) error
@@ -109,6 +111,20 @@ func (s *service) ListProjectAnswers(ctx context.Context, projectID uuid.UUID) (
 	return as, nil
 }
 
+// ExportProject returns the project's name and its answers (with citations),
+// everything needed to lay out the response document.
+func (s *service) ExportProject(ctx context.Context, projectID uuid.UUID) (string, []*answer, error) {
+	name, err := s.repo.ProjectName(ctx, projectID)
+	if err != nil {
+		return "", nil, mapDBError(err)
+	}
+	as, err := s.ListProjectAnswers(ctx, projectID)
+	if err != nil {
+		return "", nil, err
+	}
+	return name, as, nil
+}
+
 // UpdateAnswerText saves a user's edit, which also marks the answer done.
 func (s *service) UpdateAnswerText(ctx context.Context, id uuid.UUID, text string) (*answer, error) {
 	text = strings.TrimSpace(text)
@@ -140,8 +156,26 @@ func (s *service) RegenerateAnswer(ctx context.Context, id uuid.UUID) (*answer, 
 	return updated, nil
 }
 
+// ApproveAnswer signs off a drafted answer. Only a finished draft can be
+// approved; editing the text afterwards returns it to 'done' for re-review.
+func (s *service) ApproveAnswer(ctx context.Context, id uuid.UUID) (*answer, error) {
+	a, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	if a.Status != "done" || a.AnswerText == nil || strings.TrimSpace(*a.AnswerText) == "" {
+		return nil, fmt.Errorf("%w: only a drafted answer can be approved (status is %q)", ErrInvalidInput, a.Status)
+	}
+
+	updated, err := s.repo.UpdateStatus(ctx, id, "approved")
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	return updated, nil
+}
+
 // FillProject queues every unanswered question in a project and reports how
-// many jobs it enqueued. Answers already done are left alone.
+// many jobs it enqueued. Answers already done or approved are left alone.
 func (s *service) FillProject(ctx context.Context, projectID uuid.UUID) (int, error) {
 	as, err := s.repo.GetByProjectID(ctx, projectID)
 	if err != nil {
@@ -150,7 +184,7 @@ func (s *service) FillProject(ctx context.Context, projectID uuid.UUID) (int, er
 
 	queued := 0
 	for _, a := range as {
-		if a.Status == "done" || a.Status == "pending" {
+		if a.Status == "done" || a.Status == "pending" || a.Status == "approved" {
 			continue
 		}
 		if _, err := s.repo.UpdateStatus(ctx, a.ID, "pending"); err != nil {

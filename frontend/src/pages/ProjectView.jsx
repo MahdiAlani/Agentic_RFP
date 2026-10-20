@@ -21,7 +21,7 @@ export default function ProjectView() {
   }, [id])
 
   return (
-    <div className="dash">
+    <div className="dash project-view">
       <header className="topbar">
         <div className="topbar-left">
           <button className="ghost" onClick={() => navigate('/')}>

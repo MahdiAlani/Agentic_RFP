@@ -7,11 +7,13 @@ import (
 	"os"
 	"time"
 
+	"rfp-agent/api"
 	"rfp-agent/internal/answers"
 	"rfp-agent/internal/auth"
 	"rfp-agent/internal/chat"
 	"rfp-agent/internal/database"
 	"rfp-agent/internal/documents"
+	"rfp-agent/internal/health"
 	"rfp-agent/internal/project"
 	"rfp-agent/internal/queue"
 	"rfp-agent/internal/storage"
@@ -75,6 +77,12 @@ func main() {
 
 	authHandler := auth.NewHandler(svc, secret)
 
+	healthHandler := health.NewHandler(map[string]health.Pinger{
+		"postgres": db,
+		"redis":    q,
+		"storage":  st,
+	})
+
 	// Protected routes require a valid Bearer token (checked by auth.Middleware).
 	protected := http.NewServeMux()
 	h.RegisterRoutes(protected)
@@ -85,10 +93,12 @@ func main() {
 	chatHandler.RegisterRoutes(protected)
 	authHandler.RegisterProtectedRoutes(protected)
 
-	// Public routes (login/register) sit on the root mux; everything else falls
-	// through the "/" catch-all into the auth-protected mux.
+	// Public routes (login/register, health probes, API docs) sit on the root mux;
+	// everything else falls through the "/" catch-all into the auth-protected mux.
 	mux := http.NewServeMux()
 	authHandler.RegisterRoutes(mux)
+	healthHandler.RegisterRoutes(mux)
+	api.RegisterRoutes(mux)
 	mux.Handle("/", auth.Middleware(secret)(protected))
 
 	srv := &http.Server{

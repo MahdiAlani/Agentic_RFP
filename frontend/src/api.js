@@ -1,7 +1,8 @@
 // Thin API client. Backend calls go through the Vite dev proxy (/api -> :8080).
 import { getToken, clearSession } from './auth'
 
-async function request(method, path, body) {
+// Sends an authenticated request and returns the Response, throwing on errors.
+async function send(method, path, body) {
   const opts = { method, headers: {} }
 
   const token = getToken()
@@ -28,8 +29,26 @@ async function request(method, path, body) {
     const text = await res.text()
     throw new Error(text.trim() || `request failed (${res.status})`)
   }
-  const text = await res.text()
+  return res
+}
+
+async function request(method, path, body) {
+  const text = await (await send(method, path, body)).text()
   return text ? JSON.parse(text) : null
+}
+
+// Fetches a file the API serves (e.g. an export) and saves it in the browser.
+async function download(path, fallbackName) {
+  const res = await send('GET', path)
+  const disposition = res.headers.get('Content-Disposition') || ''
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] || fallbackName
+
+  const url = URL.createObjectURL(await res.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 // --- auth (returns { token, user }) ---
@@ -180,8 +199,18 @@ export function regenerateAnswer(id) {
   return request('POST', `/answers/${id}/regenerate`)
 }
 
+// Sign off a drafted answer. Editing it afterwards returns it to review.
+export function approveAnswer(id) {
+  return request('POST', `/answers/${id}/approve`)
+}
+
 export function deleteAnswer(id) {
   return request('DELETE', `/answers/${id}`)
+}
+
+// Download the response as a Word document.
+export function exportProject(projectID) {
+  return download(`/projects/${projectID}/answers/export`, 'rfp-response.docx')
 }
 
 // Queue every unanswered question in the project. Resolves to { queued }.

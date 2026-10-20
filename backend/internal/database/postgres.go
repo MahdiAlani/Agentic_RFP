@@ -46,6 +46,11 @@ func (db *DB) Close() {
 	db.Pool.Close()
 }
 
+// Ping checks the database is reachable (used by the readiness probe).
+func (db *DB) Ping(ctx context.Context) error {
+	return db.Pool.Ping(ctx)
+}
+
 func dsn() (string, error) {
 	if url := os.Getenv("DATABASE_URL"); url != "" {
 		return url, nil

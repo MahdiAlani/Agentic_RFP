@@ -61,8 +61,14 @@ def test_rfp_is_answered_from_the_knowledge_base(client):
     by_q = {a["question"][:3]: a for a in answers}
     assert "AES-256" in by_q["3.1"]["answer_text"]
     assert "6 hours" in by_q["3.2"]["answer_text"] and "35 days" in by_q["3.2"]["answer_text"]
-    for a in answers:
-        assert {c["file_name"] for c in a["citations"]} == {"acme_security.txt"}, "RFP itself must not be cited"
+    for q in ("3.1", "3.2"):
+        cites = by_q[q].get("citations") or []
+        assert {c["file_name"] for c in cites} == {"acme_security.txt"}, "RFP itself must not be cited"
+        # Citations are numbered to match the [n] markers in the text.
+        assert [c["position"] for c in cites] == list(range(1, len(cites) + 1))
+        assert all(f"[{c['position']}" in by_q[q]["answer_text"] for c in cites)
+    # The knowledge base says nothing about guard staffing: no sources, so it needs a person.
+    assert not by_q["3.3"].get("citations")
 
     # A second fill is a no-op: finished answers are not re-billed.
     assert client.post(f"/projects/{proj['id']}/answers/fill").json()["queued"] == 0

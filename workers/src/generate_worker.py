@@ -17,6 +17,7 @@ model, and write the result back to the row the Go backend created.
 
 import logging
 
+from src import citations
 from src.config import MAX_HISTORY_MESSAGES
 from src.db import get_connection
 from src.llm import chat
@@ -31,10 +32,22 @@ Rules:
 - Ground every claim in the context. Do not invent product capabilities.
 - If the context does not cover the question, say so plainly and state what documentation would be needed.
 - Write in a clear, professional tone suitable for a proposal response.
-- Be concise; prefer specifics over marketing language.
+- Be concise; prefer specifics over marketing language.{extra_rules}
 
 CONTEXT:
 {context}"""
+
+# Proposal answers are cited inline so reviewers can check every claim.
+CITATION_RULES = """
+- Cite the numbered context passage that supports each claim, inline, like [1] or [2, 3].
+- Only cite passages that actually contain the fact. Never cite a passage you did not use.
+- If the context does not cover the question, cite nothing.
+- Never refer to "the context", "the passages" or "the documents" in the answer itself.
+- Do not add explanations, benefits or details that the passages do not state."""
+
+
+def _system_prompt(chunks: list[dict], extra_rules: str = "") -> str:
+    return SYSTEM_PROMPT.format(context=format_context(chunks), extra_rules=extra_rules)
 
 
 def handle_generate(fields: dict) -> None:
@@ -91,7 +104,7 @@ def _chat_reply(fields: dict) -> None:
 
         chunks = search(workspace_id, question, project_id=project_id)
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT.format(context=format_context(chunks))},
+            {"role": "system", "content": _system_prompt(chunks)},
             *({"role": role, "content": content} for role, content in history),
         ]
 
@@ -143,10 +156,10 @@ def _answer(fields: dict) -> None:
 
         chunks = search(workspace_id, question, project_id=project_id)
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT.format(context=format_context(chunks))},
+            {"role": "system", "content": _system_prompt(chunks, CITATION_RULES)},
             {"role": "user", "content": question},
         ]
-        text = chat(messages)
+        text, cited = citations.resolve(chat(messages), chunks)
 
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -154,16 +167,18 @@ def _answer(fields: dict) -> None:
                     "UPDATE answers SET answer_text = %s, status = 'done' WHERE id = %s",
                     (text, answer_id),
                 )
-                # Record which chunks grounded the answer so the UI can cite them.
+                # Replace, not append: a regenerated answer cites new passages.
+                cur.execute("DELETE FROM answer_citations WHERE answer_id = %s", (answer_id,))
+                # position is the [n] marker number used in the answer text.
                 cur.executemany(
                     """
-                    INSERT INTO answer_citations (answer_id, document_id, chunk_ref)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO answer_citations (answer_id, document_id, chunk_ref, position)
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT DO NOTHING
                     """,
                     [
-                        (answer_id, c["document_id"], str(c["chunk_index"]))
-                        for c in chunks
+                        (answer_id, c["document_id"], str(c["chunk_index"]), n)
+                        for n, c in enumerate(cited, start=1)
                     ],
                 )
 

@@ -1,0 +1,707 @@
+openapi: 3.1.0
+info:
+  title: Agentic RFP API
+  version: 1.0.0
+  description: |
+    REST API for the Agentic RFP platform. Upload product documentation into a
+    workspace, open a project per RFP, extract its questions, and have the
+    workers draft cited answers for review and approval.
+
+    Authenticate with `POST /auth/login` (or `/auth/register`) and send the
+    returned token as `Authorization: Bearer <token>`.
+
+    Long-running work (embedding, question extraction, answer drafting, chat
+    replies) is queued to the Python workers; poll the resource's `status`.
+
+    Errors are returned as `text/plain` with a short message.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Workspaces
+    description: A workspace is a knowledge base of product documentation.
+  - name: Projects
+    description: A project is one RFP being answered from a workspace.
+  - name: Documents
+    description: Uploads go straight to object storage via presigned URLs.
+  - name: Answers
+    description: RFP questions and their drafted, cited answers.
+  - name: Chat
+  - name: Users
+  - name: Health
+
+paths:
+  # --- auth --------------------------------------------------------------------
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Create an account and sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "201": { $ref: "#/components/responses/Auth" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Auth" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: The signed-in user
+      responses:
+        "200": { $ref: "#/components/responses/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # --- workspaces ----------------------------------------------------------------
+  /workspaces:
+    get:
+      tags: [Workspaces]
+      summary: List the signed-in user's workspaces
+      responses:
+        "200":
+          description: Workspaces
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Workspace" } }
+    post:
+      tags: [Workspaces]
+      summary: Create a workspace
+      requestBody: { $ref: "#/components/requestBodies/Name" }
+      responses:
+        "201": { $ref: "#/components/responses/Workspace" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /workspaces/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [Workspaces]
+      summary: Get a workspace
+      responses:
+        "200": { $ref: "#/components/responses/Workspace" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Workspaces]
+      summary: Rename a workspace
+      requestBody: { $ref: "#/components/requestBodies/Name" }
+      responses:
+        "200": { $ref: "#/components/responses/Workspace" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Workspaces]
+      summary: Delete a workspace, its projects and documents
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # --- projects ----------------------------------------------------------------
+  /projects:
+    post:
+      tags: [Projects]
+      summary: Create a project in a workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_id, name]
+              properties:
+                workspace_id: { type: string, format: uuid }
+                name: { type: string }
+      responses:
+        "201": { $ref: "#/components/responses/Project" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /projects/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [Projects]
+      summary: Get a project
+      responses:
+        "200": { $ref: "#/components/responses/Project" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Projects]
+      summary: Rename a project
+      requestBody: { $ref: "#/components/requestBodies/Name" }
+      responses:
+        "200": { $ref: "#/components/responses/Project" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Projects]
+      summary: Delete a project and its documents
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /workspaces/{workspaceID}/projects:
+    parameters: [{ $ref: "#/components/parameters/workspaceID" }]
+    get:
+      tags: [Projects]
+      summary: List a workspace's projects
+      responses:
+        "200":
+          description: Projects
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Project" } }
+
+  # --- documents ---------------------------------------------------------------
+  /documents:
+    post:
+      tags: [Documents]
+      summary: Start an upload
+      description: |
+        Creates the document row and returns a presigned `upload_url`. PUT the
+        file bytes to that URL, then call `POST /documents/{id}/confirm`.
+        Omit `project_id` to add the file to the workspace knowledge base; give
+        `document_type: rfp` for the RFP itself.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_id, file_name, document_type]
+              properties:
+                workspace_id: { type: string, format: uuid }
+                project_id: { type: [string, "null"], format: uuid }
+                file_name: { type: string }
+                document_type: { type: string, examples: [rfp, other] }
+      responses:
+        "201":
+          description: Document row created; upload pending
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Document"
+                  - type: object
+                    properties:
+                      upload_url: { type: string, format: uri }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /documents/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [Documents]
+      summary: Get a document and its processing status
+      responses:
+        "200": { $ref: "#/components/responses/Document" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Documents]
+      summary: Rename a document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_name]
+              properties:
+                file_name: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Document" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Documents]
+      summary: Delete a document and its stored file
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /documents/{id}/confirm:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      tags: [Documents]
+      summary: Confirm an upload and queue it for embedding
+      responses:
+        "200": { $ref: "#/components/responses/Document" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: The file has not been uploaded yet }
+  /documents/{id}/download:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [Documents]
+      summary: Get a temporary download link
+      responses:
+        "200":
+          description: Presigned download URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download_url: { type: string, format: uri }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /workspaces/{workspaceID}/documents:
+    parameters: [{ $ref: "#/components/parameters/workspaceID" }]
+    get:
+      tags: [Documents]
+      summary: List a workspace's knowledge base documents
+      responses:
+        "200": { $ref: "#/components/responses/Documents" }
+  /projects/{projectID}/documents:
+    parameters: [{ $ref: "#/components/parameters/projectID" }]
+    get:
+      tags: [Documents]
+      summary: List a project's own documents (the RFP and supporting files)
+      responses:
+        "200": { $ref: "#/components/responses/Documents" }
+
+  # --- answers -----------------------------------------------------------------
+  /answers:
+    post:
+      tags: [Answers]
+      summary: Add a question and queue a draft answer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_id, question]
+              properties:
+                workspace_id: { type: string, format: uuid }
+                project_id: { type: [string, "null"], format: uuid }
+                document_id: { type: [string, "null"], format: uuid }
+                question: { type: string }
+      responses:
+        "201": { $ref: "#/components/responses/Answer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /answers/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [Answers]
+      summary: Get an answer with its citations
+      responses:
+        "200": { $ref: "#/components/responses/Answer" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Answers]
+      summary: Save an edited answer
+      description: Marks the answer `done`; an approved answer goes back for review.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answer_text]
+              properties:
+                answer_text: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Answer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Answers]
+      summary: Delete a question
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /answers/{id}/regenerate:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      tags: [Answers]
+      summary: Queue a fresh draft
+      responses:
+        "200": { $ref: "#/components/responses/Answer" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /answers/{id}/approve:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      tags: [Answers]
+      summary: Approve a drafted answer
+      description: Only an answer with status `done` and non-empty text can be approved.
+      responses:
+        "200": { $ref: "#/components/responses/Answer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /workspaces/{workspaceID}/answers:
+    parameters: [{ $ref: "#/components/parameters/workspaceID" }]
+    get:
+      tags: [Answers]
+      summary: List every answer in a workspace
+      responses:
+        "200": { $ref: "#/components/responses/Answers" }
+  /projects/{projectID}/answers:
+    parameters: [{ $ref: "#/components/parameters/projectID" }]
+    get:
+      tags: [Answers]
+      summary: List a project's questions in RFP order, with citations
+      responses:
+        "200": { $ref: "#/components/responses/Answers" }
+  /projects/{projectID}/answers/fill:
+    parameters: [{ $ref: "#/components/parameters/projectID" }]
+    post:
+      tags: [Answers]
+      summary: Queue a draft for every unanswered question
+      responses:
+        "202":
+          description: Jobs queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queued: { type: integer }
+  /projects/{projectID}/answers/extract:
+    parameters: [{ $ref: "#/components/parameters/projectID" }]
+    post:
+      tags: [Answers]
+      summary: Extract the questions from an uploaded RFP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_id, document_id]
+              properties:
+                workspace_id: { type: string, format: uuid }
+                document_id: { type: string, format: uuid }
+      responses:
+        "202": { description: Extraction queued; questions appear as answers with status `new` }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /projects/{projectID}/answers/export:
+    parameters: [{ $ref: "#/components/parameters/projectID" }]
+    get:
+      tags: [Answers]
+      summary: Download the response as a Word document
+      responses:
+        "200":
+          description: The response document
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # --- chat --------------------------------------------------------------------
+  /projects/{projectID}/conversations:
+    parameters: [{ $ref: "#/components/parameters/projectID" }]
+    get:
+      tags: [Chat]
+      summary: List a project's conversations, newest first
+      responses:
+        "200":
+          description: Conversations
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Conversation" } }
+    post:
+      tags: [Chat]
+      summary: Start a conversation
+      requestBody: { $ref: "#/components/requestBodies/Title" }
+      responses:
+        "201": { $ref: "#/components/responses/Conversation" }
+  /conversations/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [Chat]
+      summary: Get a conversation
+      responses:
+        "200": { $ref: "#/components/responses/Conversation" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Chat]
+      summary: Rename a conversation
+      requestBody: { $ref: "#/components/requestBodies/Title" }
+      responses:
+        "200": { $ref: "#/components/responses/Conversation" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Chat]
+      summary: Delete a conversation and its messages
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /conversations/{id}/messages:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [Chat]
+      summary: List a conversation's messages, oldest first
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Message" } }
+    post:
+      tags: [Chat]
+      summary: Send a message
+      description: Returns the stored user message and a `pending` assistant message the workers fill in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        "201":
+          description: Message stored; reply queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/Message" }
+                  assistant: { $ref: "#/components/schemas/Message" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # --- users -------------------------------------------------------------------
+  /users:
+    post:
+      tags: [Users]
+      summary: Create a user (prefer /auth/register)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "201": { $ref: "#/components/responses/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /users/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [Users]
+      summary: Get a user
+      responses:
+        "200": { $ref: "#/components/responses/User" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Users]
+      summary: Update a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/User" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Users]
+      summary: Delete a user
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # --- health ------------------------------------------------------------------
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness - the process is serving
+      security: []
+      responses:
+        "200": { description: OK }
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness - Postgres, Redis and object storage all answer
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Readiness" }
+        "503": { $ref: "#/components/responses/Readiness" }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    workspaceID: { name: workspaceID, in: path, required: true, schema: { type: string, format: uuid } }
+    projectID: { name: projectID, in: path, required: true, schema: { type: string, format: uuid } }
+
+  requestBodies:
+    Name:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+    Title:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              title: { type: string, description: Defaults to "New chat" when blank }
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+    Workspace:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+    Project:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+    Document:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        file_name: { type: string }
+        file_key: { type: string }
+        document_type: { type: string, examples: [rfp, other] }
+        status: { type: string, enum: [pending, uploaded, embedded, failed] }
+        created_at: { type: string, format: date-time }
+    Citation:
+      type: object
+      properties:
+        position: { type: integer, description: "The [n] marker used in the answer text" }
+        document_id: { type: string, format: uuid }
+        file_name: { type: string }
+        chunk_ref: { type: string }
+        content: { type: string, description: The cited passage }
+    Answer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        document_id: { type: string, format: uuid }
+        question: { type: string }
+        answer_text: { type: string }
+        status: { type: string, enum: [new, pending, done, approved, failed] }
+        position: { type: integer }
+        created_at: { type: string, format: date-time }
+        citations: { type: array, items: { $ref: "#/components/schemas/Citation" } }
+    Conversation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        title: { type: string }
+        created_at: { type: string, format: date-time }
+    Message:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        conversation_id: { type: string, format: uuid }
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+        status: { type: string, enum: [pending, complete, failed] }
+        created_at: { type: string, format: date-time }
+
+  responses:
+    Auth:
+      description: Signed in
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              token: { type: string }
+              user: { $ref: "#/components/schemas/User" }
+    User:
+      description: A user
+      content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+    Workspace:
+      description: A workspace
+      content: { application/json: { schema: { $ref: "#/components/schemas/Workspace" } } }
+    Project:
+      description: A project
+      content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } }
+    Document:
+      description: A document
+      content: { application/json: { schema: { $ref: "#/components/schemas/Document" } } }
+    Documents:
+      description: Documents
+      content:
+        application/json:
+          schema: { type: array, items: { $ref: "#/components/schemas/Document" } }
+    Answer:
+      description: An answer
+      content: { application/json: { schema: { $ref: "#/components/schemas/Answer" } } }
+    Answers:
+      description: Answers
+      content:
+        application/json:
+          schema: { type: array, items: { $ref: "#/components/schemas/Answer" } }
+    Conversation:
+      description: A conversation
+      content: { application/json: { schema: { $ref: "#/components/schemas/Conversation" } } }
+    Readiness:
+      description: Dependency status
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status: { type: string, enum: [ok, degraded] }
+              checks:
+                type: object
+                additionalProperties: { type: string, enum: [ok, unavailable] }
+    BadRequest:
+      description: Invalid input
+      content: { text/plain: { schema: { type: string } } }
+    Unauthorized:
+      description: Missing, invalid or expired token, or wrong credentials
+      content: { text/plain: { schema: { type: string } } }
+    NotFound:
+      description: Not found
+      content: { text/plain: { schema: { type: string } } }
+    Conflict:
+      description: Already exists
+      content: { text/plain: { schema: { type: string } } }

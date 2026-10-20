@@ -1,10 +1,13 @@
 package answers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -23,10 +26,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /answers/{id}", h.GetAnswer)
 	mux.HandleFunc("PATCH /answers/{id}", h.UpdateAnswer)
 	mux.HandleFunc("POST /answers/{id}/regenerate", h.RegenerateAnswer)
+	mux.HandleFunc("POST /answers/{id}/approve", h.ApproveAnswer)
 	mux.HandleFunc("GET /workspaces/{workspaceID}/answers", h.ListAnswers)
 	mux.HandleFunc("GET /projects/{projectID}/answers", h.ListProjectAnswers)
 	mux.HandleFunc("POST /projects/{projectID}/answers/fill", h.FillProject)
 	mux.HandleFunc("POST /projects/{projectID}/answers/extract", h.ExtractQuestions)
+	mux.HandleFunc("GET /projects/{projectID}/answers/export", h.ExportProject)
 	mux.HandleFunc("DELETE /answers/{id}", h.DeleteAnswer)
 }
 
@@ -44,6 +49,34 @@ func (h *Handler) ListProjectAnswers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, as)
+}
+
+// ExportProject downloads the RFP response as a Word document.
+func (h *Handler) ExportProject(w http.ResponseWriter, r *http.Request) {
+	projectID, err := uuid.Parse(r.PathValue("projectID"))
+	if err != nil {
+		http.Error(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+
+	name, as, err := h.svc.ExportProject(r.Context(), projectID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	// Build into memory first so a failure can still return a clean 500.
+	var buf bytes.Buffer
+	if err := buildResponse(name, as, time.Now()).Write(&buf); err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", docxContentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, exportFilename(name)))
+	if _, err := buf.WriteTo(w); err != nil {
+		log.Printf("%s %s: write export: %v", r.Method, r.URL.Path, err)
+	}
 }
 
 func (h *Handler) UpdateAnswer(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +111,22 @@ func (h *Handler) RegenerateAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a, err := h.svc.RegenerateAnswer(r.Context(), id)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (h *Handler) ApproveAnswer(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	a, err := h.svc.ApproveAnswer(r.Context(), id)
 	if err != nil {
 		writeError(w, r, err)
 		return

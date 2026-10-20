@@ -1,8 +1,11 @@
 """API behaviour that needs Postgres, Redis and MinIO but no workers or LLM."""
 
+import io
+import zipfile
+
 import pytest
 
-from conftest import API_URL, Client, request
+from conftest import API_URL, Client, request, wait_for
 
 
 class TestAuth:
@@ -143,6 +146,39 @@ class TestChatAndAnswers:
         assert r.status == 200
         got = client.get(f"/answers/{a.json()['id']}").json()
         assert got["answer_text"] == "Hand-written answer." and got["status"] == "done"
+
+    def test_approval_flow(self, client):
+        ws = client.workspace()
+        proj = client.project(ws["id"])
+        aid = client.post("/answers", {"workspace_id": ws["id"], "project_id": proj["id"], "question": "Q?"}).json()["id"]
+        assert wait_for(lambda: client.get(f"/answers/{aid}").json()["status"] != "pending", timeout=60)
+
+        client.patch(f"/answers/{aid}", {"answer_text": "Final answer."})
+        r = client.post(f"/answers/{aid}/approve")
+        assert r.status == 200 and r.json()["status"] == "approved"
+        assert client.post(f"/answers/{aid}/approve").status == 400  # already approved
+
+        # Editing an approved answer sends it back for review.
+        client.patch(f"/answers/{aid}", {"answer_text": "Changed after sign-off."})
+        assert client.get(f"/answers/{aid}").json()["status"] == "done"
+
+    def test_word_export(self, client):
+        ws = client.workspace()
+        proj = client.project(ws["id"], "Export & <Check>")
+        aid = client.post("/answers", {"workspace_id": ws["id"], "project_id": proj["id"], "question": "Q1?"}).json()["id"]
+        client.patch(f"/answers/{aid}", {"answer_text": "Answer one."})
+
+        r = request("GET", API_URL + f"/projects/{proj['id']}/answers/export",
+                    headers={"Authorization": f"Bearer {client.token}"})
+        assert r.status == 200
+        assert r.headers["Content-Type"].startswith("application/vnd.openxmlformats")
+        assert 'filename="Export_Check-response.docx"' in r.headers["Content-Disposition"]
+
+        doc = zipfile.ZipFile(io.BytesIO(r.body)).read("word/document.xml").decode()
+        assert "Export &amp; &lt;Check&gt;" in doc and "Q1?" in doc and "Answer one." in doc
+
+    def test_export_unknown_project_is_404(self, client):
+        assert client.get("/projects/00000000-0000-0000-0000-000000000000/answers/export").status == 404
 
     def test_deleting_workspace_cascades(self, client):
         ws = client.workspace()
