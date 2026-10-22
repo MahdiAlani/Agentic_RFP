@@ -131,6 +131,25 @@ class TestChatAndAnswers:
         roles = [m["role"] for m in client.get(f"/conversations/{conv['id']}/messages").json()]
         assert roles == ["user", "assistant"]
 
+    def test_repeated_create_reuses_empty_chat(self, client):
+        ws = client.workspace()
+        proj = client.project(ws["id"])
+        first = client.post(f"/projects/{proj['id']}/conversations", {})
+        second = client.post(f"/projects/{proj['id']}/conversations", {})
+        assert first.status in (200, 201)
+        assert second.status == 200
+        assert first.json()["id"] == second.json()["id"]
+
+    def test_create_after_message_makes_new_chat(self, client):
+        ws = client.workspace()
+        proj = client.project(ws["id"])
+        conv = client.post(f"/projects/{proj['id']}/conversations", {}).json()
+        assert client.post(f"/conversations/{conv['id']}/messages", {"content": "Hi"}).status == 201
+
+        r = client.post(f"/projects/{proj['id']}/conversations", {})
+        assert r.status == 201
+        assert r.json()["id"] != conv["id"]
+
     def test_empty_message_rejected(self, client):
         ws = client.workspace()
         proj = client.project(ws["id"])

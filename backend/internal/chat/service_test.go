@@ -12,12 +12,16 @@ import (
 type fakeRepo struct {
 	Repository
 	created  *conversation
+	existing *conversation // empty chat the fake reports as already present
 	messages int
 }
 
-func (f *fakeRepo) CreateConversation(_ context.Context, c *conversation) (*conversation, error) {
+func (f *fakeRepo) CreateOrReuseEmptyConversation(_ context.Context, c *conversation) (*conversation, bool, error) {
+	if f.existing != nil {
+		return f.existing, false, nil
+	}
 	f.created = c
-	return c, nil
+	return c, true, nil
 }
 
 func (f *fakeRepo) GetConversation(context.Context, uuid.UUID) (*conversation, error) {
@@ -34,11 +38,31 @@ func TestCreateConversation(t *testing.T) {
 	svc := NewService(repo, nil)
 	ctx := context.Background()
 
-	if _, err := svc.CreateConversation(ctx, uuid.Nil, "x"); !errors.Is(err, ErrInvalidInput) {
+	if _, _, err := svc.CreateConversation(ctx, uuid.Nil, "x"); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("nil project: err = %v", err)
 	}
-	if _, err := svc.CreateConversation(ctx, uuid.New(), "   "); err != nil || repo.created.Title != "New chat" {
-		t.Fatalf("blank title -> %q, %v; want default title", repo.created.Title, err)
+	if _, created, err := svc.CreateConversation(ctx, uuid.New(), "   "); err != nil || !created || repo.created.Title != "New chat" {
+		t.Fatalf("blank title -> created=%v, %v; want new chat with default title", created, err)
+	}
+}
+
+func TestCreateConversationReusesEmptyChat(t *testing.T) {
+	existing := &conversation{ID: uuid.New(), Title: "New chat"}
+	repo := &fakeRepo{existing: existing}
+	svc := NewService(repo, nil)
+
+	c, created, err := svc.CreateConversation(context.Background(), uuid.New(), "")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if created {
+		t.Fatal("created = true, want false when an empty chat is reused")
+	}
+	if c.ID != existing.ID {
+		t.Fatalf("got conversation %v, want existing %v", c.ID, existing.ID)
+	}
+	if repo.created != nil {
+		t.Fatal("a new conversation was inserted despite an empty one existing")
 	}
 }
 

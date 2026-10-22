@@ -21,6 +21,7 @@ export default function ChatPanel({ project }) {
   const [error, setError] = useState('')
   const [renamingId, setRenamingId] = useState(null)
   const [pendingDelete, setPendingDelete] = useState(null)
+  const [creatingChat, setCreatingChat] = useState(false)
   const messagesRef = useRef(null)
 
   // Load (or create) conversations for this project.
@@ -81,13 +82,32 @@ export default function ChatPanel({ project }) {
 
   async function handleNewChat() {
     setError('')
+    setCreatingChat(true)
     try {
-      const c = await createConversation(project.id, 'New chat')
-      setConversations((prev) => [c, ...prev])
-      setActiveId(c.id)
-      setMessages([])
+      // Look for an empty chat
+      let emptyFound = false;
+      for (const c of conversations) {
+        const ms = await listMessages(c.id)
+        if ((ms || []).length === 0) {
+          // Switch to this chat instead
+          setActiveId(c.id);
+          emptyFound = true;
+          break;
+        }
+      }
+      
+      // No empty chat was found
+      if (!emptyFound) {
+        const c = await createConversation(project.id, 'New chat')
+        setConversations((prev) => [c, ...prev.filter((x) => x.id !== c.id)])
+        setActiveId(c.id)
+        setMessages([])
+      }
+
     } catch (err) {
       setError(err.message)
+    } finally {
+      setCreatingChat(false)
     }
   }
 
@@ -161,7 +181,7 @@ export default function ChatPanel({ project }) {
               >
                 <TrashIcon />
               </button>
-              <button className="icon-btn" title="New chat" onClick={handleNewChat}>
+              <button className="icon-btn" title="New chat" disabled={creatingChat} onClick={handleNewChat}>
                 <PlusIcon />
               </button>
             </div>

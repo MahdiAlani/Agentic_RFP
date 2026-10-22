@@ -40,13 +40,17 @@ func (h *Handler) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	// Body is optional; ignore decode errors on empty bodies.
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	c, err := h.svc.CreateConversation(r.Context(), projectID, body.Title)
+	c, created, err := h.svc.CreateConversation(r.Context(), projectID, body.Title)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, c)
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, c)
 }
 
 func (h *Handler) ListConversations(w http.ResponseWriter, r *http.Request) {
