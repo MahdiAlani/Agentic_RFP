@@ -20,7 +20,7 @@ var (
 )
 
 type Service interface {
-	CreateConversation(ctx context.Context, projectID uuid.UUID, title string) (*conversation, error)
+	CreateConversation(ctx context.Context, projectID uuid.UUID, title string) (*conversation, bool, error)
 	ListConversations(ctx context.Context, projectID uuid.UUID) ([]*conversation, error)
 	GetConversation(ctx context.Context, id uuid.UUID) (*conversation, error)
 	RenameConversation(ctx context.Context, id uuid.UUID, title string) (*conversation, error)
@@ -38,19 +38,19 @@ func NewService(repo Repository, q *queue.Queue) Service {
 	return &service{repo: repo, queue: q}
 }
 
-func (s *service) CreateConversation(ctx context.Context, projectID uuid.UUID, title string) (*conversation, error) {
+func (s *service) CreateConversation(ctx context.Context, projectID uuid.UUID, title string) (*conversation, bool, error) {
 	if projectID == uuid.Nil {
-		return nil, fmt.Errorf("%w: project_id is required", ErrInvalidInput)
+		return nil, false, fmt.Errorf("%w: project_id is required", ErrInvalidInput)
 	}
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "New chat"
 	}
-	c, err := s.repo.CreateConversation(ctx, &conversation{ProjectID: projectID, Title: title})
+	c, created, err := s.repo.CreateOrReuseEmptyConversation(ctx, &conversation{ProjectID: projectID, Title: title})
 	if err != nil {
-		return nil, mapDBError(err)
+		return nil, false, mapDBError(err)
 	}
-	return c, nil
+	return c, created, nil
 }
 
 func (s *service) ListConversations(ctx context.Context, projectID uuid.UUID) ([]*conversation, error) {

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 
@@ -11,7 +12,7 @@ import (
 )
 
 type Repository interface {
-	CreateConversation(ctx context.Context, c *conversation) (*conversation, error)
+	CreateOrReuseEmptyConversation(ctx context.Context, c *conversation) (*conversation, bool, error)
 	GetConversation(ctx context.Context, id uuid.UUID) (*conversation, error)
 	ListConversations(ctx context.Context, projectID uuid.UUID) ([]*conversation, error)
 	UpdateConversationTitle(ctx context.Context, id uuid.UUID, title string) (*conversation, error)
@@ -28,17 +29,55 @@ func NewRepository(db *database.DB) Repository {
 	return &postgresRepo{db: db}
 }
 
-func (r *postgresRepo) CreateConversation(ctx context.Context, c *conversation) (*conversation, error) {
+// CreateOrReuseEmptyConversation returns the project's newest conversation with
+// no messages, or inserts c if there is none. The bool reports whether c was inserted.
+func (r *postgresRepo) CreateOrReuseEmptyConversation(ctx context.Context, c *conversation) (*conversation, bool, error) {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Locking the project row makes concurrent creates for the same project wait
+	// for each other, so only one of them can see "no empty chat" and insert.
+	// If the project doesn't exist, this locks nothing and the insert below
+	// reports the foreign key error.
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM projects WHERE id = $1 FOR UPDATE`, c.ProjectID); err != nil {
+		return nil, false, err
+	}
+
+	found := &conversation{}
+	err = tx.QueryRow(ctx,
+		`SELECT id, project_id, title, created_at FROM conversations
+		 WHERE project_id = $1
+		   AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.conversation_id = conversations.id)
+		 ORDER BY created_at DESC
+		 LIMIT 1`,
+		c.ProjectID,
+	).Scan(&found.ID, &found.ProjectID, &found.Title, &found.CreatedAt)
+	if err == nil {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, false, err
+		}
+		return found, false, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, err
+	}
+
 	created := &conversation{}
-	err := r.db.Pool.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`INSERT INTO conversations (project_id, title) VALUES ($1, $2)
 		 RETURNING id, project_id, title, created_at`,
 		c.ProjectID, c.Title,
 	).Scan(&created.ID, &created.ProjectID, &created.Title, &created.CreatedAt)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return created, nil
+	if err := tx.Commit(ctx); err != nil {
+		return nil, false, err
+	}
+	return created, true, nil
 }
 
 func (r *postgresRepo) GetConversation(ctx context.Context, id uuid.UUID) (*conversation, error) {
