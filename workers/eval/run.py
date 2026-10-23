@@ -20,6 +20,7 @@ import argparse
 import json
 import logging
 import os
+import secrets
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -34,8 +35,6 @@ from src.quality import Draft, blockers, run_checks
 HERE = Path(__file__).resolve().parent
 API_URL = os.getenv("API_URL", "http://localhost:8080")
 DEMO_DIR = Path(os.getenv("DEMO_DIR", HERE.parent.parent / "demo"))
-EVAL_EMAIL = os.getenv("EVAL_EMAIL", "eval@corvane.example")
-EVAL_PASSWORD = os.getenv("EVAL_PASSWORD", "corvane-eval")
 
 # Checks that together mean "everything this answer says is backed by its sources".
 SUPPORT_CHECKS = {"grounded", "numbers_grounded", "citation_markers_valid"}
@@ -204,7 +203,8 @@ def main() -> None:
     cases = json.loads(args.cases.read_text())["cases"]
 
     api = ApiClient(API_URL)
-    api.login_or_register(EVAL_EMAIL, "Eval Harness", EVAL_PASSWORD)
+    # A throwaway user per run: no fixed credentials, and runs never share data.
+    api.register(f"eval-{secrets.token_hex(6)}@corvane.example", "Eval Harness", secrets.token_urlsafe(16))
     rows = ask_all(api, cases, keep=args.keep)
 
     log.info("grading...")

@@ -43,7 +43,7 @@ Write-Host ""
 Write-Host "All set:" -ForegroundColor Green
 Write-Host "  Frontend : http://localhost:5173"
 Write-Host "  API      : http://localhost:8080"
-Write-Host "  MinIO    : http://localhost:9001  (minioadmin / minioadmin)"
+Write-Host "  MinIO    : http://localhost:9001  (credentials from .env)"
 Write-Host ""
 Write-Host "Start the workers in another terminal:" -ForegroundColor Yellow
 Write-Host "  cd workers; pip install -r requirements.txt; python main.py"

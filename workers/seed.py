@@ -18,7 +18,7 @@ from src.api_client import ApiClient, wait_for
 API_URL = os.getenv("API_URL", "http://localhost:8080")
 DEMO_DIR = Path(os.getenv("DEMO_DIR", Path(__file__).resolve().parent.parent / "demo"))
 DEMO_EMAIL = os.getenv("DEMO_EMAIL", "demo@corvane.example")
-DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "corvane-demo")
+DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "")
 
 WORKSPACE_NAME = "Corvane"
 PROJECT_NAME = "City of Ashford - Data Analytics RFP"
@@ -28,6 +28,9 @@ log = logging.getLogger("seed")
 
 
 def main() -> None:
+    if len(DEMO_PASSWORD) < 8:
+        sys.exit("Set DEMO_PASSWORD (8+ characters) in .env; the seed signs in with it.")
+
     api = ApiClient(API_URL)
     api.login_or_register(DEMO_EMAIL, "Demo User", DEMO_PASSWORD)
 
@@ -68,7 +71,7 @@ def main() -> None:
 
     failed = [a for a in answers if a["status"] == "failed"]
     log.info("drafted %d of %d answers", len(answers) - len(failed), len(answers))
-    log.info("\nSign in at http://localhost:5173 as %s / %s", DEMO_EMAIL, DEMO_PASSWORD)
+    log.info("\nSign in at http://localhost:5173 as %s with DEMO_PASSWORD from .env", DEMO_EMAIL)
 
 
 if __name__ == "__main__":

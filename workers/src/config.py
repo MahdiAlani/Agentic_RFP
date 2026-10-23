@@ -41,7 +41,7 @@ def _database_url() -> str:
     host = os.getenv("POSTGRES_HOST", "localhost")
     port = os.getenv("POSTGRES_PORT", "5432")
     user = os.getenv("POSTGRES_USER", "postgres")
-    password = os.getenv("POSTGRES_PASSWORD", "postgres")
+    password = os.getenv("POSTGRES_PASSWORD", "")
     name = os.getenv("POSTGRES_DB", "app")
     return f"postgresql://{user}:{password}@{host}:{port}/{name}"
 
@@ -50,8 +50,8 @@ DATABASE_URL = _database_url()
 
 # --- MinIO / object storage ---
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "rfp-documents")
 MINIO_USE_SSL = os.getenv("MINIO_USE_SSL", "false").lower() == "true"
 
