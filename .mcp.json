@@ -4,9 +4,7 @@
       "command": "python",
       "args": ["workers/mcp_server.py"],
       "env": {
-        "RFP_API_URL": "http://localhost:8080",
-        "RFP_EMAIL": "demo@corvane.example",
-        "RFP_PASSWORD": "corvane-demo"
+        "RFP_API_URL": "http://localhost:8080"
       }
     }
   }

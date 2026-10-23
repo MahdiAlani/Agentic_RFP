@@ -25,6 +25,8 @@ x-tool-env: &tool-env
   API_URL: http://api:8080
   DEMO_DIR: /demo
   STORAGE_INTERNAL_URL: http://minio:9000
+  DEMO_EMAIL: ${DEMO_EMAIL:-demo@corvane.example}
+  DEMO_PASSWORD: ${DEMO_PASSWORD:-}
 
 x-tool: &tool
   build: ./workers

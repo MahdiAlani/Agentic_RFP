@@ -20,12 +20,12 @@ Needs Docker. Set an OpenAI API key for real model-backed answers; without one,
 workers use deterministic mock chat and embeddings (for CI and keyless runs).
 
 ```bash
-cp .env.example .env              # then set OPENAI_API_KEY
+cp .env.example .env              # then set OPENAI_API_KEY and DEMO_PASSWORD
 docker compose up --build         # API, workers, UI, Postgres, Redis, MinIO
 docker compose run --rm seed      # load the demo (in another terminal)
 ```
 
-Open http://localhost:5173 and sign in as `demo@corvane.example` / `corvane-demo`.
+Open http://localhost:5173 and sign in with `DEMO_EMAIL` / `DEMO_PASSWORD` from your `.env`.
 The seed loads documentation for **Corvane**, a fictional analytics vendor, and
 answers the **City of Ashford**'s RFP from it. It extracts and drafts 13
 questions, and flags three for a person: two the documentation doesn't cover,
@@ -36,7 +36,7 @@ approve that one until every figure traces back to a source.
 |---|---|
 | App | http://localhost:5173 |
 | API docs (Swagger UI) | http://localhost:8080/docs |
-| MinIO console | http://localhost:9001 (minioadmin / minioadmin) |
+| MinIO console | http://localhost:9001 (`MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` from `.env`) |
 
 ## What it does
 
@@ -144,7 +144,7 @@ configured user through the REST API, so an agent can only see what that user ca
 | `approve_answer` | Sign off; **refused while any blocker fails** |
 
 The repo's `.mcp.json` points [Claude Code](https://claude.com/claude-code) at
-the demo. Open the project with the stack running and ask, for example, *"Work
+the demo, signing in with the demo login from your `.env`. Open the project with the stack running and ask, for example, *"Work
 through the Ashford RFP: draft anything unanswered, check each answer and
 approve the ones that pass."* It needs the worker dependencies installed
 locally (`pip install -r workers/requirements.txt`).
