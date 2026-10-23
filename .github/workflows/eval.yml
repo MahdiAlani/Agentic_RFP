@@ -23,6 +23,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          cp .env.example .env   # local-dev credentials; compose requires them
           docker compose up -d --build
           for i in $(seq 1 60); do curl -sf localhost:8080/readyz && break; sleep 2; done
 
