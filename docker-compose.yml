@@ -1,7 +1,8 @@
 # Full stack:   docker compose up --build        -> http://localhost:5173
 # Infra only:   docker compose up -d postgres redis minio   (see start.ps1)
 #
-# Values come from the repo-root .env when present, with dev defaults below.
+# Credentials come only from the repo-root .env (copy .env.example to start);
+# nothing secret is written in this file.
 
 # Connection settings shared by the API and the workers. Hostnames are the
 # service names on the compose network, not localhost.
@@ -9,12 +10,12 @@ x-app-env: &app-env
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"
   POSTGRES_USER: ${POSTGRES_USER:-postgres}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
   POSTGRES_DB: ${POSTGRES_DB:-app}
   REDIS_ADDR: redis:6379
   MINIO_ENDPOINT: minio:9000
-  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env (see .env.example)}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env (see .env.example)}
   MINIO_BUCKET: ${MINIO_BUCKET:-rfp-documents}
   MINIO_USE_SSL: "false"
 
@@ -41,7 +42,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
       POSTGRES_DB: ${POSTGRES_DB:-app}
     ports:
       - "5432:5432"
@@ -75,8 +76,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env (see .env.example)}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env (see .env.example)}
       # Allow browser (cross-origin) presigned PUT/GET uploads in dev.
       MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
@@ -94,8 +95,11 @@ services:
     entrypoint:
       - migrate
       - -path=/migrations
-      - -database=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app}?sslmode=disable
+      - -database=postgres://${POSTGRES_USER:-postgres}@postgres:5432/${POSTGRES_DB:-app}?sslmode=disable
     command: ["up"]
+    environment:
+      # Read by the Postgres driver, so the password never appears in the URL.
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
     volumes:
       - ./migrations:/migrations:ro
     depends_on:
@@ -107,7 +111,7 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-env
-      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (see .env.example)}
       # Presigned upload/download URLs are opened by the browser, so they must
       # be signed for the host the browser sees.
       MINIO_PUBLIC_ENDPOINT: localhost:9000

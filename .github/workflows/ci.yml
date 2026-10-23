@@ -68,6 +68,7 @@ jobs:
         env:
           JWT_SECRET: ci-only-secret
         run: |
+          cp .env.example .env   # local-dev credentials; compose requires them
           docker compose up -d --build
           for i in $(seq 1 60); do curl -sf localhost:8080/readyz && break; sleep 2; done
 
