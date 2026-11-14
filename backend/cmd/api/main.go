@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"rfp-agent/api"
+	"rfp-agent/internal/access"
 	"rfp-agent/internal/answers"
 	"rfp-agent/internal/auth"
 	"rfp-agent/internal/chat"
@@ -91,14 +92,16 @@ func main() {
 		"storage":  st,
 	})
 
-	// Protected routes require a valid Bearer token (checked by auth.Middleware).
+	// Protected routes require a valid Bearer token (checked by auth.Middleware),
+	// and the guard lets a user reach only resources in their own workspaces.
 	protected := http.NewServeMux()
-	h.RegisterRoutes(protected)
-	wsHandler.RegisterRoutes(protected)
-	projHandler.RegisterRoutes(protected)
-	docHandler.RegisterRoutes(protected)
-	ansHandler.RegisterRoutes(protected)
-	chatHandler.RegisterRoutes(protected)
+	guard := access.NewGuard(protected, access.NewDB(db.Pool), auth.UserIDFromContext)
+	h.RegisterRoutes(guard)
+	wsHandler.RegisterRoutes(guard)
+	projHandler.RegisterRoutes(guard)
+	docHandler.RegisterRoutes(guard)
+	ansHandler.RegisterRoutes(guard)
+	chatHandler.RegisterRoutes(guard)
 	authHandler.RegisterProtectedRoutes(protected)
 
 	// Public routes (login/register, health probes, API docs) sit on the root mux;

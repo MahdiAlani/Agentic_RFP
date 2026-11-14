@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"rfp-agent/internal/access"
 )
 
 type Handler struct {
@@ -21,7 +23,7 @@ func NewHandler(svc Service) *Handler {
 }
 
 // mux to handle the endpoints
-func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+func (h *Handler) RegisterRoutes(mux access.Router) {
 	mux.HandleFunc("POST /answers", h.CreateAnswer)
 	mux.HandleFunc("GET /answers/{id}", h.GetAnswer)
 	mux.HandleFunc("PATCH /answers/{id}", h.UpdateAnswer)

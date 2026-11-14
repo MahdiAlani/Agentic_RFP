@@ -1,16 +1,9 @@
 """One user must never see or change another user's data.
 
-KNOWN GAP: only workspace list/create are scoped to the caller today. Every
-by-ID route trusts the ID, so any logged-in user can read, edit or delete
-another user's workspaces, projects, documents, answers, chats, and accounts.
-
-These tests are strict xfails: they document the hole, and the suite fails
-(XPASS) the moment a fix lands, as a reminder to drop the marker.
+Another user's resources answer 404, as if they didn't exist.
 """
 
 import pytest
-
-KNOWN_GAP = pytest.mark.xfail(strict=True, reason="no ownership checks on by-ID routes yet")
 
 
 @pytest.fixture
@@ -39,14 +32,12 @@ READS = [
 ]
 
 
-@KNOWN_GAP
 @pytest.mark.parametrize("template", READS)
 def test_cannot_read_other_users_data(victim, other_client, template):
     r = other_client.get(template.format(**victim))
-    assert r.status in (403, 404), f"{template} -> {r.status}"
+    assert r.status == 404, f"{template} -> {r.status}"
 
 
-@KNOWN_GAP
 @pytest.mark.parametrize("template", ["/documents/{doc}", "/projects/{proj}", "/workspaces/{ws}"])
 def test_cannot_delete_other_users_data(victim, client, other_client, template):
     path = template.format(**victim)
@@ -54,7 +45,26 @@ def test_cannot_delete_other_users_data(victim, client, other_client, template):
     assert client.get(path).status == 200, f"{path} was deleted by another user"
 
 
-@KNOWN_GAP
+@pytest.mark.parametrize("template", ["/projects/{proj}", "/workspaces/{ws}"])
+def test_cannot_rename_other_users_data(victim, client, other_client, template):
+    path = template.format(**victim)
+    assert other_client.patch(path, {"name": "hijacked"}).status == 404
+    assert client.get(path).json()["name"] != "hijacked"
+
+
+def test_cannot_create_in_other_users_workspace(victim, other_client):
+    r = other_client.post("/projects", {"workspace_id": victim["ws"], "name": "intruder"})
+    assert r.status == 404, r.text
+    r = other_client.post("/answers", {"workspace_id": victim["ws"], "question": "Q?"})
+    assert r.status == 404, r.text
+
+
+def test_owner_still_has_access(victim, client):
+    for template in READS:
+        path = template.format(**victim)
+        assert client.get(path).status == 200, path
+
+
 def test_cannot_delete_another_account(client, other_client):
     other_client.delete(f"/users/{client.user_id}")
     assert client.get("/auth/me").status == 200
