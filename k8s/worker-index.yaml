@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-index
+spec:
+  replicas: 0
+  selector:
+    matchLabels: { app: worker-index }
+  template:
+    metadata:
+      labels: { app: worker-index }
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: agentic-rfp-worker:latest
+          env:
+            - name: WORKER_TYPE
+              value: "index"
+            - name: WORKER_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - name: REDIS_ADDR
+              value: "redis:6379"
+            - name: KAFKA_BROKERS
+              value: "kafka:9092"
+          envFrom:
+            - secretRef: { name: agentic-rfp-env }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { memory: 1Gi }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-index
+spec:
+  scaleTargetRef:
+    name: worker-index
+  minReplicaCount: 0
+  # One consumer per partition (TOPIC_PARTITIONS); more would sit idle.
+  maxReplicaCount: 6
+  pollingInterval: 15
+  cooldownPeriod: 300
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka:9092
+        consumerGroup: workers
+        topic: documents.uploaded
+        lagThreshold: "5"
+        activationLagThreshold: "1"
+        offsetResetPolicy: earliest
