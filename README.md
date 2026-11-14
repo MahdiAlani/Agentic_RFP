@@ -16,8 +16,11 @@ S3-compatible storage · **React** · **MCP** server for AI agents · LLM-graded
 
 ## Try it
 
-Needs Docker. Set an OpenAI API key for real model-backed answers; without one,
-workers use deterministic mock chat and embeddings (for CI and keyless runs).
+Needs Docker. Set an OpenAI API key for real model-backed answers. Without one
+the whole pipeline still runs on an offline stand-in (`workers/src/offline.py`):
+word-hash embeddings, and a drafter that quotes the best-matching passage with
+its citation, or flags the question when nothing matches. That keeps a fresh
+clone and CI working with no key.
 
 ```bash
 cp .env.example .env              # then set OPENAI_API_KEY and DEMO_PASSWORD
@@ -28,9 +31,10 @@ docker compose run --rm seed      # load the demo (in another terminal)
 Open http://localhost:5173 and sign in with `DEMO_EMAIL` / `DEMO_PASSWORD` from your `.env`.
 The seed loads documentation for **Corvane**, a fictional analytics vendor, and
 answers the **City of Ashford**'s RFP from it. It extracts and drafts 13
-questions, and flags three for a person: two the documentation doesn't cover,
-and a pricing calculation the model didn't cite. The quality checks refuse to
-approve that one until every figure traces back to a source.
+questions, and flags the two the documentation doesn't cover (WCAG conformance
+and customer references) for a person. With a real model it also catches a
+pricing calculation the model didn't cite: the quality checks refuse to approve
+that one until every figure traces back to a source.
 
 | | |
 |---|---|
@@ -47,8 +51,13 @@ approve that one until every figure traces back to a source.
   actually cites are saved, renumbered to match the text.
 - **Flags gaps.** An answer the documentation doesn't support comes back with no
   sources and a **Needs input** badge, rather than an invented capability.
-- **Review and approval.** Edit any answer; approve it when it's ready. Editing
-  an approved answer sends it back for review.
+- **Review and approval, gated by quality checks.** Edit any answer; approve it
+  when it's ready. The API refuses approval while a blocking check fails (no
+  sources, a figure no source contains, placeholder text...). A reviewer can
+  approve anyway after an explicit confirmation; an AI agent can't. Editing an
+  approved answer sends it back for review.
+- **Private per user.** Every workspace belongs to the user who created it, and
+  one guard checks ownership on every route, so another user's data answers 404.
 - **Exports to Word**, with each answer's sources and anything still awaiting approval marked.
 - **Chat** over the same knowledge base.
 
@@ -85,7 +94,10 @@ flowchart LR
 ```
 
 - **Go API** (`backend/`): auth, CRUD, upload orchestration, upload events and the job queue.
-  It never calls the model, so it stays fast.
+  It never calls the model, so it stays fast. Every protected route is
+  registered through one ownership guard (`internal/access`) that resolves each
+  ID in the path or body to its workspace's owner; a route whose ID it can't
+  resolve fails at startup instead of going unchecked.
 - **Uploads skip the API.** The browser PUTs files straight to object storage
   with a presigned URL; the API only confirms the object landed and publishes
   a `documents.uploaded` event to Kafka, keyed by document ID.
@@ -108,13 +120,19 @@ flowchart LR
 
 ## Quality: checks and eval
 
-**13 quality checks** (`workers/src/quality.py`) run before an answer can be
-signed off through the MCP server. Nine are deterministic: citations present,
+**13 quality checks** (`workers/src/quality.py`) stand between a draft and
+sign-off. Nine are deterministic: citations present,
 every `[n]` marker valid, **every figure in the answer found in a cited
 source**, no placeholders, no "as an AI" or "based on the context" phrasing,
 plus length, marketing-language and hedging warnings. Four are judged by a
 stronger model in a single call: grounded, answers every part of the question,
 professional tone, and consistent with the RFP's other answers.
+
+A worker runs the deterministic checks after every draft and every edit and
+stores the results with a hash of the text they covered. The API approves an
+answer only when those results match its current text and no blocker fails, so
+the gate holds for the UI, the REST API and the MCP server alike. The judged
+checks cost a model call, so they run in the MCP server's review and the eval.
 
 **The eval harness** (`workers/eval/`) replays a fixed set of 21 questions
 through the full pipeline and grades every answer:

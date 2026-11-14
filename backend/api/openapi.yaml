@@ -10,6 +10,10 @@ info:
     Authenticate with `POST /auth/login` (or `/auth/register`) and send the
     returned token as `Authorization: Bearer <token>`.
 
+    A user reaches only their own data: everything belongs to a workspace, and
+    a workspace to the user who created it. Another user's resources (by path
+    ID or by an ID in the request body) answer `404`, as if they didn't exist.
+
     Long-running work (embedding, question extraction, answer drafting, chat
     replies) is queued to the Python workers; poll the resource's `status`.
 
@@ -305,7 +309,7 @@ paths:
     patch:
       tags: [Answers]
       summary: Save an edited answer
-      description: Marks the answer `done`; an approved answer goes back for review.
+      description: Marks the answer `done` (an approved answer goes back for review) and re-runs the quality checks.
       requestBody:
         required: true
         content:
@@ -338,11 +342,30 @@ paths:
     post:
       tags: [Answers]
       summary: Approve a drafted answer
-      description: Only an answer with status `done` and non-empty text can be approved.
+      description: |
+        Only an answer with status `done` and non-empty text can be approved,
+        and only once the quality checks have run on its current text
+        (`checks_current`). While a blocking check fails the answer is refused
+        with `422`, unless the body sets `override` (a person who has reviewed
+        the failures; the MCP server never does).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                override: { type: boolean, default: false }
       responses:
         "200": { $ref: "#/components/responses/Answer" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The quality checks are still running on the current text; retry shortly
+          content: { text/plain: { schema: { type: string } } }
+        "422":
+          description: A blocking quality check fails; the message lists them
+          content: { text/plain: { schema: { type: string } } }
   /workspaces/{workspaceID}/answers:
     parameters: [{ $ref: "#/components/parameters/workspaceID" }]
     get:
@@ -627,6 +650,17 @@ components:
         position: { type: integer }
         created_at: { type: string, format: date-time }
         citations: { type: array, items: { $ref: "#/components/schemas/Citation" } }
+        checks:
+          type: array
+          description: The deterministic quality checks last run on this answer
+          items:
+            type: object
+            properties:
+              name: { type: string, examples: [has_citations, numbers_grounded] }
+              passed: { type: boolean }
+              severity: { type: string, enum: [blocker, warning] }
+              detail: { type: string }
+        checks_current: { type: boolean, description: "Whether `checks` were run on the current answer_text" }
     Conversation:
       type: object
       properties:
