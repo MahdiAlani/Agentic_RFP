@@ -114,3 +114,51 @@ class TestChatReply:
         conn = use_conn(generate_worker, fake_conn())
         handle_generate(self.JOB)
         assert conn.statements("UPDATE messages") == []
+
+
+class TestChecks:
+    ROW = [("How is data encrypted?", "Data is encrypted with AES-256 at rest [1].")]
+
+    def stored(self, conn):
+        (params,) = conn.statements("SET checks")
+        checks, answer_id, text = params
+        return {c["name"]: c for c in checks.obj}, answer_id, text
+
+    def test_check_job_stores_deterministic_results(self, fake_conn, use_conn):
+        conn = use_conn(generate_worker, fake_conn({
+            "SELECT question, answer_text": self.ROW,
+            "FROM answer_citations": [(1, "All data is encrypted at rest with AES-256.")],
+        }))
+        handle_generate({"kind": "check_answer", "answer_id": "ans-1"})
+
+        checks, answer_id, text = self.stored(conn)
+        assert (answer_id, text) == ("ans-1", self.ROW[0][1])  # only if the text is unchanged
+        assert checks["has_citations"]["passed"] and checks["numbers_grounded"]["passed"]
+        assert "grounded" not in checks  # judged checks need the model; not run here
+
+    def test_invented_figure_is_a_failing_blocker(self, fake_conn, use_conn):
+        conn = use_conn(generate_worker, fake_conn({
+            "SELECT question, answer_text": [("Encryption?", "AES-512 at rest [1].")],
+            "FROM answer_citations": [(1, "All data is encrypted at rest with AES-256.")],
+        }))
+        handle_generate({"kind": "check_answer", "answer_id": "ans-1"})
+
+        checks, _, _ = self.stored(conn)
+        assert checks["numbers_grounded"] == {
+            "name": "numbers_grounded", "passed": False, "severity": "blocker",
+            "detail": "figures not found in any cited source: 512",
+        }
+
+    def test_deleted_answer_is_skipped(self, fake_conn, use_conn):
+        conn = use_conn(generate_worker, fake_conn())
+        handle_generate({"kind": "check_answer", "answer_id": "gone"})
+        assert conn.statements("SET checks") == []
+
+    def test_drafting_stores_checks(self, model, fake_conn, use_conn):
+        conn = use_conn(generate_worker, fake_conn({
+            "SELECT project_id FROM answers": [("proj-1",)],
+            "SELECT question, answer_text": [("Q?", "Grounded reply.")],
+        }))
+        handle_generate(TestAnswer.JOB)
+        checks, _, _ = self.stored(conn)
+        assert checks["has_citations"]["passed"] is False

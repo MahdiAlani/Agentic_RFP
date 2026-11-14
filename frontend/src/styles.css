@@ -826,6 +826,17 @@ body {
   color: #8a6d1e;
 }
 
+/* Blocking quality checks that fail; approval needs an explicit override. */
+.qa-checks {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.75rem 0.5rem 1.6rem;
+  border-left: 2px solid #c9a24a;
+  background: #f8f0dc;
+  color: #6f561a;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 /* Cited passages, numbered to match the [n] markers in the answer. */
 .qa-sources {
   list-style: none;

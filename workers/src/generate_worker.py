@@ -17,7 +17,9 @@ model, and write the result back to the row the Go backend created.
 
 import logging
 
-from src import citations
+from psycopg.types.json import Jsonb
+
+from src import citations, quality
 from src.config import MAX_HISTORY_MESSAGES
 from src.db import get_connection
 from src.llm import chat
@@ -54,6 +56,11 @@ def handle_generate(fields: dict) -> None:
     kind = fields.get("kind", "answer")
     if kind == "chat_reply":
         _chat_reply(fields)
+    elif kind == "check_answer":
+        if fields.get("answer_id"):
+            store_checks(fields["answer_id"])
+        else:
+            log.error("check_answer job missing answer_id: %r", fields)
     else:
         _answer(fields)
 
@@ -190,3 +197,58 @@ def _answer(fields: dict) -> None:
             conn.execute(
                 "UPDATE answers SET status = 'failed' WHERE id = %s", (answer_id,)
             )
+        return
+
+    # The draft is saved either way; if checking fails, approval re-queues it.
+    try:
+        store_checks(answer_id)
+    except Exception:
+        log.exception("failed to check answer %s", answer_id)
+
+
+# --- quality checks ---------------------------------------------------------
+
+
+def store_checks(answer_id: str) -> None:
+    """Run the deterministic quality checks on an answer and store the results.
+
+    The API approves an answer only when these were run on its current text
+    (checks_text_md5) and no blocker fails. The judged checks need a model call
+    each time, so they stay with the MCP server and the eval harness.
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT question, answer_text FROM answers WHERE id = %s", (answer_id,)
+        ).fetchone()
+        if row is None or not row[1]:
+            return
+        question, text = row
+        cited = conn.execute(
+            """
+            SELECT c.position, COALESCE(ch.content, '')
+            FROM answer_citations c
+            LEFT JOIN document_chunks ch
+                ON ch.document_id = c.document_id AND ch.chunk_index::text = c.chunk_ref
+            WHERE c.answer_id = %s
+            ORDER BY c.position
+            """,
+            (answer_id,),
+        ).fetchall()
+
+    draft = quality.Draft(
+        question=question,
+        text=text,
+        citations=[{"position": pos, "content": content} for pos, content in cited],
+    )
+    results = [r.to_dict() for r in quality.run_checks(draft, use_llm=False)]
+
+    # Only if the text is still what was checked: an edit since then has queued
+    # its own check.
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE answers SET checks = %s, checks_text_md5 = md5(answer_text)
+            WHERE id = %s AND answer_text = %s
+            """,
+            (Jsonb(results), answer_id, text),
+        )

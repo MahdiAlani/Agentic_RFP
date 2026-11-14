@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -128,7 +129,17 @@ func (h *Handler) ApproveAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a, err := h.svc.ApproveAnswer(r.Context(), id)
+	// The body is optional: {"override": true} approves despite failing
+	// blocking checks, for a person who has reviewed them.
+	var body struct {
+		Override bool `json:"override"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+
+	a, err := h.svc.ApproveAnswer(r.Context(), id, body.Override)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -262,6 +273,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, "not found", http.StatusNotFound)
 	case errors.Is(err, ErrInvalidInput):
 		http.Error(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, ErrChecksPending):
+		http.Error(w, err.Error(), http.StatusConflict)
+	case errors.Is(err, ErrChecksFailed):
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 	default:
 		log.Printf("%s %s: %v", r.Method, r.URL.Path, err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)

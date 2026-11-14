@@ -164,3 +164,24 @@ def test_api_errors_become_readable_tool_errors(fake_api):
     fake_api({("PATCH", "/answers/a1"): ApiError(400, "invalid input: answer_text is required")})
     result = call("edit_answer", answer_id="a1", text="")
     assert result.is_error and "answer_text is required" in result.content[0].text
+
+
+def test_approve_waits_for_the_apis_checks(fake_api, monkeypatch):
+    api = fake_api({("GET", "/answers/a1"): ANSWER, ("GET", "/projects/p1/answers"): [ANSWER]})
+    replies = [ApiError(409, "quality checks are still running"), {**ANSWER, "status": "approved"}]
+    get = api.request
+
+    def request(method, path, body=None):
+        if (method, path) != ("POST", "/answers/a1/approve"):
+            return get(method, path, body)
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(api, "request", request)
+    monkeypatch.setattr(mcp_server.time, "sleep", lambda s: None)
+    monkeypatch.setattr(mcp_server, "run_checks", checks())
+
+    assert mcp_server.approve_answer("a1")["approved"] is True
+    assert replies == []

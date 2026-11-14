@@ -11,7 +11,8 @@ import (
 )
 
 // Shared column list so every query returns the same shape.
-const answerCols = `id, workspace_id, project_id, document_id, question, answer_text, status, position, created_at`
+const answerCols = `id, workspace_id, project_id, document_id, question, answer_text, status, position, created_at,
+	checks, COALESCE(checks_text_md5 = md5(answer_text), false)`
 
 // answer repo
 type Repository interface {
@@ -44,10 +45,14 @@ type scanner interface {
 
 func scanAnswer(s scanner) (*answer, error) {
 	a := &answer{}
+	var checks []byte
 	err := s.Scan(&a.ID, &a.WorkspaceID, &a.ProjectID, &a.DocumentID, &a.Question,
-		&a.AnswerText, &a.Status, &a.Position, &a.CreatedAt)
+		&a.AnswerText, &a.Status, &a.Position, &a.CreatedAt, &checks, &a.ChecksCurrent)
 	if err != nil {
 		return nil, err
+	}
+	if len(checks) > 0 {
+		a.Checks = checks
 	}
 	return a, nil
 }

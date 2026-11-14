@@ -173,7 +173,14 @@ class TestChatAndAnswers:
         assert wait_for(lambda: client.get(f"/answers/{aid}").json()["status"] != "pending", timeout=60)
 
         client.patch(f"/answers/{aid}", {"answer_text": "Final answer."})
+        got = wait_for(lambda: (a := client.get(f"/answers/{aid}").json())["checks_current"] and a, timeout=30)
+        assert got, "the quality checks never ran on the edited text"
+        failing = {c["name"] for c in got["checks"] if c["severity"] == "blocker" and not c["passed"]}
+        assert "has_citations" in failing  # hand-written, no sources
+
         r = client.post(f"/answers/{aid}/approve")
+        assert r.status == 422 and "has_citations" in r.text
+        r = client.post(f"/answers/{aid}/approve", {"override": True})
         assert r.status == 200 and r.json()["status"] == "approved"
         assert client.post(f"/answers/{aid}/approve").status == 400  # already approved
 

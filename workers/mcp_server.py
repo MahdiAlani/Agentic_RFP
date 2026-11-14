@@ -21,6 +21,7 @@ Run over stdio (how MCP clients such as Claude Code launch it):
 
 import logging
 import os
+import time
 from functools import cache
 
 from mcp.server.mcpserver import MCPServer
@@ -32,6 +33,7 @@ from src.quality import WARNING, Draft, blockers, run_checks
 from src.retrieval import search
 
 API_URL = os.getenv("RFP_API_URL", "http://localhost:8080")
+APPROVE_WAIT_S = 10  # how long approve_answer waits for the API's own checks
 
 logging.getLogger("httpx").setLevel(logging.WARNING)  # one log line per API call drowns the client's view
 
@@ -182,7 +184,18 @@ def approve_answer(answer_id: str) -> dict:
     result = report(results)
     if not result["ready_for_approval"]:
         return {"approved": False, **result}
-    approved = call("POST", f"/answers/{answer_id}/approve")
+    # The API enforces the deterministic checks too, once a worker has run them
+    # on the current text; right after an edit it answers 409 for a moment.
+    for _ in range(APPROVE_WAIT_S * 2):
+        try:
+            approved = api().request("POST", f"/answers/{answer_id}/approve")
+            break
+        except ApiError as e:
+            if e.status != 409:
+                return call("POST", f"/answers/{answer_id}/approve")  # raises a readable ToolError
+            time.sleep(0.5)
+    else:
+        raise ToolError("The API's quality checks did not finish; try approving again.")
     return {"approved": True, **answer_view({**row, "status": approved["status"]})}
 
 

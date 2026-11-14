@@ -64,6 +64,16 @@ func (q *Queue) EnqueueGenerate(ctx context.Context, answerID, workspaceID uuid.
 	})
 }
 
+// EnqueueCheck asks a worker to run the deterministic quality checks on an
+// answer's current text, which approval requires. It rides the fast stream:
+// the reviewer is waiting on it.
+func (q *Queue) EnqueueCheck(ctx context.Context, answerID uuid.UUID) error {
+	return q.enqueue(ctx, StreamGenerate, map[string]any{
+		"kind":      "check_answer",
+		"answer_id": answerID.String(),
+	})
+}
+
 // EnqueueChatReply asks a worker to generate the assistant reply for a pending
 // message. The worker loads the conversation history and fills message_id.
 func (q *Queue) EnqueueChatReply(ctx context.Context, messageID, conversationID uuid.UUID) error {

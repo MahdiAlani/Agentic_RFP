@@ -69,14 +69,29 @@ func TestExtractQuestionsRequiresAllIDs(t *testing.T) {
 	}
 }
 
+// fakeJobs records the quality-check jobs a service queues.
+type fakeJobs struct {
+	Jobs
+	checked []uuid.UUID
+}
+
+func (f *fakeJobs) EnqueueCheck(_ context.Context, id uuid.UUID) error {
+	f.checked = append(f.checked, id)
+	return nil
+}
+
 func TestUpdateAnswerText(t *testing.T) {
-	repo := &fakeRepo{}
-	svc := NewService(repo, nil)
+	repo, jobs := &fakeRepo{}, &fakeJobs{}
+	svc := NewService(repo, jobs)
 	if _, err := svc.UpdateAnswerText(context.Background(), uuid.New(), "\n "); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("blank: err = %v", err)
 	}
-	if _, err := svc.UpdateAnswerText(context.Background(), uuid.New(), " Edited. "); err != nil || repo.textSet != "Edited." {
+	id := uuid.New()
+	if _, err := svc.UpdateAnswerText(context.Background(), id, " Edited. "); err != nil || repo.textSet != "Edited." {
 		t.Fatalf("saved %q, err %v", repo.textSet, err)
+	}
+	if len(jobs.checked) != 1 || jobs.checked[0] != id {
+		t.Fatalf("checks queued for %v, want the edited answer", jobs.checked)
 	}
 }
 
@@ -115,21 +130,35 @@ func TestListProjectAnswersAttachesCitations(t *testing.T) {
 
 func TestApproveAnswer(t *testing.T) {
 	text, blank := "Drafted.", "  "
+	passing := []byte(`[{"name":"has_citations","passed":true,"severity":"blocker"},
+		{"name":"length_reasonable","passed":false,"severity":"warning","detail":"3 words"}]`)
+	failing := []byte(`[{"name":"has_citations","passed":false,"severity":"blocker","detail":"No sources."}]`)
+	done := func(checks []byte, current bool) *answer {
+		return &answer{Status: "done", AnswerText: &text, Checks: checks, ChecksCurrent: current}
+	}
 	cases := map[string]struct {
 		existing *answer
+		override bool
 		wantErr  error
 	}{
-		"drafted":          {&answer{Status: "done", AnswerText: &text}, nil},
-		"missing":          {nil, ErrNotFound},
-		"still generating": {&answer{Status: "pending", AnswerText: &text}, ErrInvalidInput},
-		"never drafted":    {&answer{Status: "new"}, ErrInvalidInput},
-		"blank text":       {&answer{Status: "done", AnswerText: &blank}, ErrInvalidInput},
-		"already approved": {&answer{Status: "approved", AnswerText: &text}, ErrInvalidInput},
+		"checks pass":              {done(passing, true), false, nil},
+		"blocker fails":            {done(failing, true), false, ErrChecksFailed},
+		"blocker overridden":       {done(failing, true), true, nil},
+		"checks stale":             {done(passing, false), false, ErrChecksPending},
+		"never checked":            {done(nil, false), true, ErrChecksPending},
+		"missing":                  {nil, false, ErrNotFound},
+		"still generating":         {&answer{Status: "pending", AnswerText: &text}, false, ErrInvalidInput},
+		"never drafted":            {&answer{Status: "new"}, false, ErrInvalidInput},
+		"blank text":               {&answer{Status: "done", AnswerText: &blank}, false, ErrInvalidInput},
+		"already approved":         {&answer{Status: "approved", AnswerText: &text}, false, ErrInvalidInput},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			repo := &fakeRepo{byID: tc.existing}
-			_, err := NewService(repo, nil).ApproveAnswer(context.Background(), uuid.New())
+			repo, jobs := &fakeRepo{byID: tc.existing}, &fakeJobs{}
+			_, err := NewService(repo, jobs).ApproveAnswer(context.Background(), uuid.New(), tc.override)
+			if errors.Is(tc.wantErr, ErrChecksPending) && len(jobs.checked) != 1 {
+				t.Fatalf("stale checks were not re-queued")
+			}
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tc.wantErr)
 			}
