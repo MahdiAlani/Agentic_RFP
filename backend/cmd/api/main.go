@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"rfp-agent/api"
+	"rfp-agent/internal/access"
 	"rfp-agent/internal/answers"
 	"rfp-agent/internal/auth"
 	"rfp-agent/internal/chat"
 	"rfp-agent/internal/database"
 	"rfp-agent/internal/documents"
+	"rfp-agent/internal/events"
 	"rfp-agent/internal/health"
 	"rfp-agent/internal/project"
 	"rfp-agent/internal/queue"
@@ -49,6 +51,12 @@ func main() {
 		log.Fatalf("connect to queue: %v", err)
 	}
 
+	ev, err := events.New(ctx)
+	if err != nil {
+		log.Fatalf("connect to kafka: %v", err)
+	}
+	defer ev.Close()
+
 	repo := user.NewRepository(db)
 	svc := user.NewService(repo)
 	h := user.NewHandler(svc)
@@ -56,7 +64,7 @@ func main() {
 	// Documents first: workspace and project deletes use it to clear stored
 	// files before Postgres cascades the document rows away.
 	docRepo := documents.NewRepository(db)
-	docSvc := documents.NewService(docRepo, st, q)
+	docSvc := documents.NewService(docRepo, st, ev)
 	docHandler := documents.NewHandler(docSvc)
 
 	wsRepo := workspace.NewRepository(db)
@@ -80,17 +88,20 @@ func main() {
 	healthHandler := health.NewHandler(map[string]health.Pinger{
 		"postgres": db,
 		"redis":    q,
+		"kafka":    ev,
 		"storage":  st,
 	})
 
-	// Protected routes require a valid Bearer token (checked by auth.Middleware).
+	// Protected routes require a valid Bearer token (checked by auth.Middleware),
+	// and the guard lets a user reach only resources in their own workspaces.
 	protected := http.NewServeMux()
-	h.RegisterRoutes(protected)
-	wsHandler.RegisterRoutes(protected)
-	projHandler.RegisterRoutes(protected)
-	docHandler.RegisterRoutes(protected)
-	ansHandler.RegisterRoutes(protected)
-	chatHandler.RegisterRoutes(protected)
+	guard := access.NewGuard(protected, access.NewDB(db.Pool), auth.UserIDFromContext)
+	h.RegisterRoutes(guard)
+	wsHandler.RegisterRoutes(guard)
+	projHandler.RegisterRoutes(guard)
+	docHandler.RegisterRoutes(guard)
+	ansHandler.RegisterRoutes(guard)
+	chatHandler.RegisterRoutes(guard)
 	authHandler.RegisterProtectedRoutes(protected)
 
 	// Public routes (login/register, health probes, API docs) sit on the root mux;

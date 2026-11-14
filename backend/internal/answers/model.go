@@ -1,6 +1,7 @@
 package answers
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,4 +30,17 @@ type answer struct {
 	Position    int        `json:"position"`
 	CreatedAt   time.Time  `json:"created_at"`
 	Citations   []citation `json:"citations,omitempty"`
+	// Checks are the deterministic quality checks a worker last ran, as
+	// [{name, passed, severity, detail}]. ChecksCurrent says they were run on
+	// the current text; approval needs that.
+	Checks        json.RawMessage `json:"checks,omitempty"`
+	ChecksCurrent bool            `json:"checks_current"`
+}
+
+// check is one entry of answer.Checks.
+type check struct {
+	Name     string `json:"name"`
+	Passed   bool   `json:"passed"`
+	Severity string `json:"severity"`
+	Detail   string `json:"detail"`
 }

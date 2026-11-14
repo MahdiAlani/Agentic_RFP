@@ -2,6 +2,7 @@ package answers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,15 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/google/uuid"
-
-	"rfp-agent/internal/queue"
 )
 
 // Error helper
 var (
 	ErrNotFound     = errors.New("answer not found")
 	ErrInvalidInput = errors.New("invalid input")
+	// ErrChecksPending: the quality checks haven't run on the current text yet.
+	ErrChecksPending = errors.New("quality checks are still running; try again in a moment")
+	// ErrChecksFailed: a blocking quality check fails and nobody overrode it.
+	ErrChecksFailed = errors.New("quality checks failed")
 )
+
+// Jobs is the work the service hands to the workers (*queue.Queue).
+type Jobs interface {
+	EnqueueGenerate(ctx context.Context, answerID, workspaceID uuid.UUID, question string) error
+	EnqueueExtractQuestions(ctx context.Context, documentID, projectID, workspaceID uuid.UUID) error
+	EnqueueCheck(ctx context.Context, answerID uuid.UUID) error
+}
 
 // Endpoints
 type Service interface {
@@ -29,7 +39,7 @@ type Service interface {
 	ExportProject(ctx context.Context, projectID uuid.UUID) (string, []*answer, error)
 	UpdateAnswerText(ctx context.Context, id uuid.UUID, text string) (*answer, error)
 	RegenerateAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
-	ApproveAnswer(ctx context.Context, id uuid.UUID) (*answer, error)
+	ApproveAnswer(ctx context.Context, id uuid.UUID, override bool) (*answer, error)
 	FillProject(ctx context.Context, projectID uuid.UUID) (int, error)
 	ExtractQuestions(ctx context.Context, workspaceID, projectID, documentID uuid.UUID) error
 	DeleteAnswer(ctx context.Context, id uuid.UUID) error
@@ -38,11 +48,11 @@ type Service interface {
 // Repo service
 type service struct {
 	repo  Repository
-	queue *queue.Queue
+	queue Jobs
 }
 
 // Initializes a new repo service
-func NewService(repo Repository, q *queue.Queue) Service {
+func NewService(repo Repository, q Jobs) Service {
 	return &service{repo: repo, queue: q}
 }
 
@@ -125,7 +135,8 @@ func (s *service) ExportProject(ctx context.Context, projectID uuid.UUID) (strin
 	return name, as, nil
 }
 
-// UpdateAnswerText saves a user's edit, which also marks the answer done.
+// UpdateAnswerText saves a user's edit, which also marks the answer done, and
+// has the quality checks re-run on the new text.
 func (s *service) UpdateAnswerText(ctx context.Context, id uuid.UUID, text string) (*answer, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -134,6 +145,9 @@ func (s *service) UpdateAnswerText(ctx context.Context, id uuid.UUID, text strin
 	a, err := s.repo.UpdateText(ctx, id, text)
 	if err != nil {
 		return nil, mapDBError(err)
+	}
+	if err := s.queue.EnqueueCheck(ctx, id); err != nil {
+		return nil, err
 	}
 	return a, nil
 }
@@ -158,7 +172,11 @@ func (s *service) RegenerateAnswer(ctx context.Context, id uuid.UUID) (*answer, 
 
 // ApproveAnswer signs off a drafted answer. Only a finished draft can be
 // approved; editing the text afterwards returns it to 'done' for re-review.
-func (s *service) ApproveAnswer(ctx context.Context, id uuid.UUID) (*answer, error) {
+//
+// The quality checks must have run on the current text, and every blocking
+// check must pass. A person may override failing blockers (an answer they
+// wrote themselves has no sources, say); the MCP server never does.
+func (s *service) ApproveAnswer(ctx context.Context, id uuid.UUID, override bool) (*answer, error) {
 	a, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, mapDBError(err)
@@ -167,11 +185,38 @@ func (s *service) ApproveAnswer(ctx context.Context, id uuid.UUID) (*answer, err
 		return nil, fmt.Errorf("%w: only a drafted answer can be approved (status is %q)", ErrInvalidInput, a.Status)
 	}
 
+	if !a.ChecksCurrent {
+		// Answers drafted before checks existed have none: queue them now.
+		if err := s.queue.EnqueueCheck(ctx, id); err != nil {
+			return nil, err
+		}
+		return nil, ErrChecksPending
+	}
+	if failed := failingBlockers(a.Checks); len(failed) > 0 && !override {
+		return nil, fmt.Errorf("%w: %s", ErrChecksFailed, strings.Join(failed, "; "))
+	}
+
 	updated, err := s.repo.UpdateStatus(ctx, id, "approved")
 	if err != nil {
 		return nil, mapDBError(err)
 	}
 	return updated, nil
+}
+
+// failingBlockers describes each blocking check that failed, as "name: detail".
+// Unreadable results count as a failure rather than a pass.
+func failingBlockers(raw json.RawMessage) []string {
+	var checks []check
+	if err := json.Unmarshal(raw, &checks); err != nil {
+		return []string{"checks: unreadable results"}
+	}
+	var failed []string
+	for _, c := range checks {
+		if c.Severity == "blocker" && !c.Passed {
+			failed = append(failed, strings.TrimSuffix(c.Name+": "+c.Detail, ": "))
+		}
+	}
+	return failed
 }
 
 // FillProject queues every unanswered question in a project and reports how

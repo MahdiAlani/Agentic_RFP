@@ -17,8 +17,8 @@ foreach ($port in 8080, 5173) {
     }
 }
 
-Write-Host "==> Starting infra containers (postgres, redis, minio)..." -ForegroundColor Cyan
-docker compose up -d postgres redis minio
+Write-Host "==> Starting infra containers (postgres, redis, kafka, minio)..." -ForegroundColor Cyan
+docker compose up -d --wait postgres redis kafka minio
 if ($LASTEXITCODE -ne 0) { Write-Host "docker compose up failed." -ForegroundColor Red; exit 1 }
 
 # The migrate service waits for Postgres to be healthy, then applies anything new.

@@ -32,7 +32,7 @@ def search(
             FROM document_chunks c
             JOIN documents d ON d.id = c.document_id
             WHERE c.workspace_id = %s
-              AND c.embedding IS NOT NULL
+              AND d.status = 'embedded'
               AND d.document_type <> 'rfp'
               AND (d.project_id IS NULL OR d.project_id = %s)
             ORDER BY c.embedding <=> %s::vector

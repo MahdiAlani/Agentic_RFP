@@ -1,4 +1,4 @@
-"""API behaviour that needs Postgres, Redis and MinIO but no workers or LLM."""
+"""API behaviour that needs Postgres, Redis, Kafka and MinIO but no workers or LLM."""
 
 import io
 import zipfile
@@ -76,7 +76,7 @@ class TestDocuments:
         doc = client.upload(ws["id"], "security.txt", "AES-256 everywhere.")
 
         got = client.get(f"/documents/{doc['id']}").json()
-        assert got["status"] in ("uploaded", "embedded", "failed")  # a worker may already have it
+        assert got["status"] in ("uploaded", "embedding", "embedded", "failed")  # a worker may already have it
 
         listed = client.get(f"/workspaces/{ws['id']}/documents").json()
         assert [d["id"] for d in listed] == [doc["id"]]
@@ -173,7 +173,14 @@ class TestChatAndAnswers:
         assert wait_for(lambda: client.get(f"/answers/{aid}").json()["status"] != "pending", timeout=60)
 
         client.patch(f"/answers/{aid}", {"answer_text": "Final answer."})
+        got = wait_for(lambda: (a := client.get(f"/answers/{aid}").json())["checks_current"] and a, timeout=30)
+        assert got, "the quality checks never ran on the edited text"
+        failing = {c["name"] for c in got["checks"] if c["severity"] == "blocker" and not c["passed"]}
+        assert "has_citations" in failing  # hand-written, no sources
+
         r = client.post(f"/answers/{aid}/approve")
+        assert r.status == 422 and "has_citations" in r.text
+        r = client.post(f"/answers/{aid}/approve", {"override": True})
         assert r.status == 200 and r.json()["status"] == "approved"
         assert client.post(f"/answers/{aid}/approve").status == 400  # already approved
 

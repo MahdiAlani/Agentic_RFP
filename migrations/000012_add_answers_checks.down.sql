@@ -1,0 +1,2 @@
+ALTER TABLE answers DROP COLUMN IF EXISTS checks_text_md5;
+ALTER TABLE answers DROP COLUMN IF EXISTS checks;

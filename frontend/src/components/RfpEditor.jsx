@@ -27,6 +27,7 @@ export default function RfpEditor({ project }) {
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null)
+  const [pendingOverride, setPendingOverride] = useState(null)
 
   function loadAnswers() {
     return listProjectAnswers(project.id)
@@ -45,9 +46,9 @@ export default function RfpEditor({ project }) {
     ]).finally(() => setLoading(false))
   }, [project.id])
 
-  // Poll while any question is being answered.
+  // Poll while any question is being answered or checked.
   useEffect(() => {
-    if (!answers.some((a) => a.status === 'pending')) return
+    if (!answers.some((a) => a.status === 'pending' || checksRunning(a))) return
     const t = setInterval(loadAnswers, 3000)
     return () => clearInterval(t)
   }, [answers, project.id])
@@ -215,7 +216,11 @@ export default function RfpEditor({ project }) {
               answer={a}
               onSave={(text) => updateRow(() => updateAnswer(a.id, text))}
               onRegenerate={() => updateRow(() => regenerateAnswer(a.id))}
-              onApprove={() => updateRow(() => approveAnswer(a.id))}
+              onApprove={() =>
+                failingBlockers(a).length
+                  ? setPendingOverride(a)
+                  : updateRow(() => approveAnswer(a.id))
+              }
               onDelete={() => setPendingDelete(a)}
             />
           ))}
@@ -242,8 +247,37 @@ export default function RfpEditor({ project }) {
         onConfirm={handleDelete}
         onCancel={() => setPendingDelete(null)}
       />
+
+      <ConfirmDialog
+        open={Boolean(pendingOverride)}
+        title="Approve despite failing checks?"
+        message={
+          pendingOverride &&
+          `${failingBlockers(pendingOverride)
+            .map((c) => c.detail || c.name)
+            .join(' ')} Approve only if you have checked the answer yourself.`
+        }
+        confirmLabel="Approve anyway"
+        onConfirm={() => {
+          const id = pendingOverride.id
+          setPendingOverride(null)
+          updateRow(() => approveAnswer(id, { override: true }))
+        }}
+        onCancel={() => setPendingOverride(null)}
+      />
     </section>
   )
+}
+
+// The quality checks run in a worker after every draft and edit; approval
+// waits for them to cover the current text.
+function checksRunning(answer) {
+  return answer.status === 'done' && !answer.checks_current
+}
+
+function failingBlockers(answer) {
+  if (!answer.checks_current) return []
+  return (answer.checks || []).filter((c) => c.severity === 'blocker' && !c.passed)
 }
 
 // A finished answer with no sources wasn't covered by the knowledge base, so a
@@ -278,6 +312,8 @@ function QuestionRow({ answer, onSave, onRegenerate, onApprove, onDelete }) {
   const pending = answer.status === 'pending'
   const status = statusOf(answer)
   const citations = answer.citations || []
+  const checking = checksRunning(answer)
+  const blockers = failingBlockers(answer)
 
   function save() {
     if (!dirty || !draft.trim()) return
@@ -330,12 +366,20 @@ function QuestionRow({ answer, onSave, onRegenerate, onApprove, onDelete }) {
             {answer.answer_text ? 'Redraft with AI' : 'Draft with AI'}
           </button>
           {answer.status === 'done' && !dirty && (
-            <button className="link" onClick={onApprove}>
-              Approve
+            <button className="link" onClick={onApprove} disabled={checking}>
+              {checking ? 'Checking…' : blockers.length ? 'Approve anyway…' : 'Approve'}
             </button>
           )}
         </div>
       </div>
+
+      {answer.status === 'done' && !dirty && blockers.length > 0 && (
+        <ul className="qa-checks">
+          {blockers.map((c) => (
+            <li key={c.name}>{c.detail || c.name.replaceAll('_', ' ')}</li>
+          ))}
+        </ul>
+      )}
 
       {showSources && (
         <ol className="qa-sources">

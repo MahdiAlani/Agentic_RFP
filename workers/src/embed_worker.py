@@ -1,7 +1,9 @@
-"""Embed worker: consumes the `embed` stream.
+"""Embed worker: consumes the Redis `embed` stream (the slow lane).
 
-Message fields (produced by the Go backend on document confirm):
-    document_id: str  (UUID)
+Jobs:
+    kind=embed_batch        document_id, chunk_ids (comma-separated UUIDs),
+                            queued by the index worker
+    kind=extract_questions  see extract_worker
 """
 
 import logging
@@ -9,76 +11,70 @@ import logging
 from src.db import get_connection, to_vector
 from src.extract_worker import handle_extract
 from src.llm import embed_texts
-from src.storage import get_object_bytes
-from src.text import chunk_text, extract_text
 
 log = logging.getLogger("embed")
 
 
 def handle_embed(fields: dict) -> None:
-    """Slow-lane dispatcher: document embedding and RFP question extraction."""
     if fields.get("kind") == "extract_questions":
         handle_extract(fields)
         return
 
     document_id = fields.get("document_id")
-    if not document_id:
-        log.error("embed job missing document_id: %r", fields)
+    chunk_ids = [c for c in fields.get("chunk_ids", "").split(",") if c]
+    if not document_id or not chunk_ids:
+        log.error("embed job missing document_id or chunk_ids: %r", fields)
         return
 
     with get_connection() as conn:
-        row = conn.execute(
-            "SELECT workspace_id, file_key, file_name FROM documents WHERE id = %s",
-            (document_id,),
-        ).fetchone()
+        rows = conn.execute(
+            """
+            SELECT id, content FROM document_chunks
+            WHERE id = ANY(%s::uuid[]) AND embedding IS NULL
+            ORDER BY chunk_index
+            """,
+            (chunk_ids,),
+        ).fetchall()
 
-    if row is None:
-        # The document was deleted between enqueue and now
-        log.warning("document %s no longer exists, dropping job", document_id)
+    if not rows:
+        # Already embedded by an earlier delivery, or the document was
+        # re-indexed or deleted since this job was queued.
         return
 
-    workspace_id, file_key, file_name = row
-    log.info("embedding document %s (%s)", document_id, file_name)
-
     try:
-        raw = get_object_bytes(file_key)
-        text = extract_text(file_name, raw)
-        chunks = chunk_text(text)
-        if not chunks:
-            raise ValueError("no text could be extracted")
-        vectors = embed_texts(chunks)
+        vectors = embed_texts([content for _, content in rows])
     except Exception:
-        log.exception("failed to embed document %s", document_id)
+        log.exception("failed to embed a batch of document %s", document_id)
         _set_status(document_id, "failed")
         return
 
-    # Chunks and the status flip go in one transaction: either the document is
-    # fully embedded or it isn't. Deleting first makes re-embedding idempotent.
+    # `embedding IS NULL` makes a duplicate delivery update nothing, so each
+    # batch counts down pending_batches exactly once.
     with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM document_chunks WHERE document_id = %s", (document_id,)
-            )
-            cur.executemany(
+        updated = conn.execute(
+            """
+            UPDATE document_chunks c SET embedding = v.embedding::vector
+            FROM unnest(%s::uuid[], %s::text[]) AS v(id, embedding)
+            WHERE c.id = v.id AND c.embedding IS NULL
+            RETURNING c.id
+            """,
+            ([str(chunk_id) for chunk_id, _ in rows], [to_vector(v) for v in vectors]),
+        ).fetchall()
+        if updated:
+            conn.execute(
                 """
-                INSERT INTO document_chunks
-                    (document_id, workspace_id, chunk_index, content, embedding)
-                VALUES (%s, %s, %s, %s, %s::vector)
+                UPDATE documents SET
+                    pending_batches = pending_batches - 1,
+                    status = CASE WHEN pending_batches = 1 AND status = 'embedding'
+                                  THEN 'embedded' ELSE status END
+                WHERE id = %s
                 """,
-                [
-                    (document_id, workspace_id, i, content, to_vector(vector))
-                    for i, (content, vector) in enumerate(zip(chunks, vectors))
-                ],
-            )
-            cur.execute(
-                "UPDATE documents SET status = 'embedded' WHERE id = %s", (document_id,)
+                (document_id,),
             )
 
-    log.info("embedded document %s into %d chunks", document_id, len(chunks))
+    log.info("embedded %d chunks of document %s", len(updated), document_id)
 
 
 def _set_status(document_id: str, status: str) -> None:
     with get_connection() as conn:
-        conn.execute(
-            "UPDATE documents SET status = %s WHERE id = %s", (status, document_id)
-        )
+        conn.execute("UPDATE documents SET status = %s WHERE id = %s", (status, document_id))

@@ -10,27 +10,31 @@ flagged for a person instead of a made-up answer.
 
 ![RFP editor with drafted, cited answers and chat](docs/screenshots/rfp-editor.png)
 
-**Go** REST API · **Python** workers · **PostgreSQL + pgvector** · **Redis Streams** ·
+**Go** REST API · **Python** workers · **PostgreSQL + pgvector** · **Kafka** · **Redis Streams** ·
 S3-compatible storage · **React** · **MCP** server for AI agents · LLM-graded
 **eval harness** · Docker Compose, Kubernetes + KEDA
 
 ## Try it
 
-Needs Docker. Set an OpenAI API key for real model-backed answers; without one,
-workers use deterministic mock chat and embeddings (for CI and keyless runs).
+Needs Docker. Set an OpenAI API key for real model-backed answers. Without one
+the whole pipeline still runs on an offline stand-in (`workers/src/offline.py`):
+word-hash embeddings, and a drafter that quotes the best-matching passage with
+its citation, or flags the question when nothing matches. That keeps a fresh
+clone and CI working with no key.
 
 ```bash
 cp .env.example .env              # then set OPENAI_API_KEY and DEMO_PASSWORD
-docker compose up --build         # API, workers, UI, Postgres, Redis, MinIO
+docker compose up --build         # API, workers, UI, Postgres, Redis, Kafka, MinIO
 docker compose run --rm seed      # load the demo (in another terminal)
 ```
 
 Open http://localhost:5173 and sign in with `DEMO_EMAIL` / `DEMO_PASSWORD` from your `.env`.
 The seed loads documentation for **Corvane**, a fictional analytics vendor, and
 answers the **City of Ashford**'s RFP from it. It extracts and drafts 13
-questions, and flags three for a person: two the documentation doesn't cover,
-and a pricing calculation the model didn't cite. The quality checks refuse to
-approve that one until every figure traces back to a source.
+questions, and flags the two the documentation doesn't cover (WCAG conformance
+and customer references) for a person. With a real model it also catches a
+pricing calculation the model didn't cite: the quality checks refuse to approve
+that one until every figure traces back to a source.
 
 | | |
 |---|---|
@@ -47,8 +51,13 @@ approve that one until every figure traces back to a source.
   actually cites are saved, renumbered to match the text.
 - **Flags gaps.** An answer the documentation doesn't support comes back with no
   sources and a **Needs input** badge, rather than an invented capability.
-- **Review and approval.** Edit any answer; approve it when it's ready. Editing
-  an approved answer sends it back for review.
+- **Review and approval, gated by quality checks.** Edit any answer; approve it
+  when it's ready. The API refuses approval while a blocking check fails (no
+  sources, a figure no source contains, placeholder text...). A reviewer can
+  approve anyway after an explicit confirmation; an AI agent can't. Editing an
+  approved answer sends it back for review.
+- **Private per user.** Every workspace belongs to the user who created it, and
+  one guard checks ownership on every route, so another user's data answers 404.
 - **Exports to Word**, with each answer's sources and anything still awaiting approval marked.
 - **Chat** over the same knowledge base.
 
@@ -73,25 +82,37 @@ flowchart LR
     MCP -.->|search| PG
     UI -->|presigned PUT| S3[(MinIO / S3)]
     API --> PG[(Postgres + pgvector)]
-    API -->|XADD| R[[Redis Streams]]
+    API -->|documents.uploaded| K[[Kafka]]
+    K --> W0[Index workers]
+    W0 -->|embed batches| R[[Redis Streams]]
+    API -->|XADD| R
     R -->|embed: slow lane| W1[Embed workers]
     R -->|generate: fast lane| W2[Generate workers]
-    W1 --> S3
-    W1 --> PG
-    W2 --> PG
+    W0 --> S3
+    W0 & W1 & W2 --> PG
     W1 & W2 --> OAI[OpenAI]
 ```
 
-- **Go API** (`backend/`): auth, CRUD, upload orchestration and the job queue.
-  It never calls the model, so it stays fast.
+- **Go API** (`backend/`): auth, CRUD, upload orchestration, upload events and the job queue.
+  It never calls the model, so it stays fast. Every protected route is
+  registered through one ownership guard (`internal/access`) that resolves each
+  ID in the path or body to its workspace's owner; a route whose ID it can't
+  resolve fails at startup instead of going unchecked.
 - **Uploads skip the API.** The browser PUTs files straight to object storage
-  with a presigned URL; the API only confirms the object landed and queues it.
-- **Two Redis streams** separate slow bulk work (`embed`: text extraction,
-  chunking, embedding, question extraction) from the user-facing path
-  (`generate`: answers and chat), so indexing a large document never delays a
-  reply. Consumer groups give at-least-once delivery. Jobs left by a crashed
-  worker are reclaimed with `XAUTOCLAIM`, and a job that fails 3 times goes to
-  a dead-letter stream.
+  with a presigned URL; the API only confirms the object landed and publishes
+  a `documents.uploaded` event to Kafka, keyed by document ID.
+- **Index workers** consume that topic, extract and chunk the text, and queue
+  one Redis `embed` job per 100 chunks. The event log is kept, so indexing
+  scales apart from the API and every upload can be replayed (for example to
+  re-embed with a new model). An event's offset is committed only once it is
+  handled; one that fails 3 times goes to `documents.uploaded.dead`.
+- **Two Redis streams** separate slow bulk work (`embed`: embedding batches,
+  question extraction) from the user-facing path (`generate`: answers and
+  chat), so indexing a large document never delays a reply. Batches of one
+  document embed in parallel across workers; a per-document counter marks it
+  `embedded` when the last one lands. Consumer groups give at-least-once
+  delivery. Jobs left by a crashed worker are reclaimed with `XAUTOCLAIM`, and
+  a job that fails 3 times goes to a dead-letter stream.
 - **Retrieval** is cosine similarity over pgvector (HNSW index), scoped to the
   workspace plus the asking project. RFP documents are excluded: their chunks
   match their own questions almost perfectly and would crowd out the
@@ -99,13 +120,19 @@ flowchart LR
 
 ## Quality: checks and eval
 
-**13 quality checks** (`workers/src/quality.py`) run before an answer can be
-signed off through the MCP server. Nine are deterministic: citations present,
+**13 quality checks** (`workers/src/quality.py`) stand between a draft and
+sign-off. Nine are deterministic: citations present,
 every `[n]` marker valid, **every figure in the answer found in a cited
 source**, no placeholders, no "as an AI" or "based on the context" phrasing,
 plus length, marketing-language and hedging warnings. Four are judged by a
 stronger model in a single call: grounded, answers every part of the question,
 professional tone, and consistent with the RFP's other answers.
+
+A worker runs the deterministic checks after every draft and every edit and
+stores the results with a hash of the text they covered. The API approves an
+answer only when those results match its current text and no blocker fails, so
+the gate holds for the UI, the REST API and the MCP server alike. The judged
+checks cost a model call, so they run in the MCP server's review and the eval.
 
 **The eval harness** (`workers/eval/`) replays a fixed set of 21 questions
 through the full pipeline and grades every answer:
@@ -155,7 +182,7 @@ The REST API is described by an OpenAPI 3.1 spec (`backend/api/openapi.yaml`),
 served at `/openapi.yaml` with Swagger UI at
 [`/docs`](http://localhost:8080/docs). A test fails if a route is added
 without being documented, or documented without existing. `/healthz` (liveness)
-and `/readyz` (Postgres, Redis and storage reachable) are there for orchestrators.
+and `/readyz` (Postgres, Redis, Kafka and storage reachable) are there for orchestrators.
 
 ![Swagger UI for the REST API](docs/screenshots/api-docs.png)
 
@@ -189,7 +216,7 @@ tests/e2e/   End-to-end tests against a running stack
 | Suite | Needs | Run |
 |---|---|---|
 | Go unit tests | nothing | `cd backend && go test ./...` |
-| Worker unit tests | nothing (Postgres, Redis and MinIO are faked; missing OpenAI keys use deterministic mocks) | `cd workers && pip install -r requirements-dev.txt && pytest` |
+| Worker unit tests | nothing (Postgres, Redis, Kafka and MinIO are faked; missing OpenAI keys use deterministic mocks) | `cd workers && pip install -r requirements-dev.txt && pytest` |
 | End-to-end | the running stack | `pytest tests/e2e` |
 | + LLM pipeline | the stack and an OpenAI key | `RUN_LLM_E2E=1 pytest tests/e2e` |
 | Answer eval | the stack and an OpenAI key | `docker compose run --rm eval` |
@@ -200,9 +227,11 @@ push and pull request.
 
 ## Kubernetes (worker autoscaling)
 
-`k8s/` runs the workers as two Deployments, `WORKER_TYPE=embed` and
-`WORKER_TYPE=generate`, each scaled by [KEDA](https://keda.sh) on its Redis
-stream lag. CPU-based autoscaling doesn't work here: the workers spend their
+`k8s/` runs the workers as three Deployments, `WORKER_TYPE=index`, `embed`
+and `generate`, each scaled by [KEDA](https://keda.sh) on its backlog: Kafka
+consumer lag for `index` (capped at the topic's 6 partitions), Redis stream
+lag for the other two. The manifests expect `redis` and `kafka` services in
+the cluster. CPU-based autoscaling doesn't work here: the workers spend their
 time blocked on Redis and OpenAI, so a backed-up pod looks idle.
 
 ```bash
@@ -211,7 +240,7 @@ kubectl create secret generic agentic-rfp-env --from-env-file=.env
 kubectl apply -f k8s/
 ```
 
-`embed` scales to zero between uploads; `generate` keeps one replica warm
+`index` and `embed` scale to zero between uploads; `generate` keeps one replica warm
 because chat is user-facing. On shutdown, workers finish in-flight jobs before
 exiting.
 ## License

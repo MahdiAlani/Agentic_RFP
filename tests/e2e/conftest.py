@@ -1,4 +1,4 @@
-"""End-to-end tests against a running stack (API + Postgres + Redis + MinIO).
+"""End-to-end tests against a running stack (API + Postgres + Redis + Kafka + MinIO).
 
 Start the stack (./start.ps1, or see README), then from the repo root:
 

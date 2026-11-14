@@ -25,7 +25,7 @@ func (f *fakeRepo) GetByID(context.Context, uuid.UUID) (*document, error) {
 }
 
 func TestCreateDocumentValidation(t *testing.T) {
-	// Storage and queue are nil: validation must reject bad input before
+	// Storage and events are nil: validation must reject bad input before
 	// touching either.
 	svc := NewService(&fakeRepo{}, nil, nil)
 	ws := uuid.New()

@@ -200,8 +200,10 @@ export function regenerateAnswer(id) {
 }
 
 // Sign off a drafted answer. Editing it afterwards returns it to review.
-export function approveAnswer(id) {
-  return request('POST', `/answers/${id}/approve`)
+// The API refuses while a blocking quality check fails, unless `override`
+// says a person has reviewed the failures and approves anyway.
+export function approveAnswer(id, { override = false } = {}) {
+  return request('POST', `/answers/${id}/approve`, override ? { override: true } : undefined)
 }
 
 export function deleteAnswer(id) {
