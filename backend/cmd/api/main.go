@@ -13,6 +13,7 @@ import (
 	"rfp-agent/internal/chat"
 	"rfp-agent/internal/database"
 	"rfp-agent/internal/documents"
+	"rfp-agent/internal/events"
 	"rfp-agent/internal/health"
 	"rfp-agent/internal/project"
 	"rfp-agent/internal/queue"
@@ -49,6 +50,12 @@ func main() {
 		log.Fatalf("connect to queue: %v", err)
 	}
 
+	ev, err := events.New(ctx)
+	if err != nil {
+		log.Fatalf("connect to kafka: %v", err)
+	}
+	defer ev.Close()
+
 	repo := user.NewRepository(db)
 	svc := user.NewService(repo)
 	h := user.NewHandler(svc)
@@ -56,7 +63,7 @@ func main() {
 	// Documents first: workspace and project deletes use it to clear stored
 	// files before Postgres cascades the document rows away.
 	docRepo := documents.NewRepository(db)
-	docSvc := documents.NewService(docRepo, st, q)
+	docSvc := documents.NewService(docRepo, st, ev)
 	docHandler := documents.NewHandler(docSvc)
 
 	wsRepo := workspace.NewRepository(db)
@@ -80,6 +87,7 @@ func main() {
 	healthHandler := health.NewHandler(map[string]health.Pinger{
 		"postgres": db,
 		"redis":    q,
+		"kafka":    ev,
 		"storage":  st,
 	})
 

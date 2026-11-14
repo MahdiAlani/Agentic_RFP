@@ -464,7 +464,8 @@ body {
   color: var(--ink-soft);
 }
 
-.badge.pending {
+.badge.pending,
+.badge.embedding {
   background: #f3e6c4;
   color: #8a6d1e;
 }

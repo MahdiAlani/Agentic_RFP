@@ -1,4 +1,4 @@
-"""API behaviour that needs Postgres, Redis and MinIO but no workers or LLM."""
+"""API behaviour that needs Postgres, Redis, Kafka and MinIO but no workers or LLM."""
 
 import io
 import zipfile
@@ -76,7 +76,7 @@ class TestDocuments:
         doc = client.upload(ws["id"], "security.txt", "AES-256 everywhere.")
 
         got = client.get(f"/documents/{doc['id']}").json()
-        assert got["status"] in ("uploaded", "embedded", "failed")  # a worker may already have it
+        assert got["status"] in ("uploaded", "embedding", "embedded", "failed")  # a worker may already have it
 
         listed = client.get(f"/workspaces/{ws['id']}/documents").json()
         assert [d["id"] for d in listed] == [doc["id"]]

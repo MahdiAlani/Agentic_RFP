@@ -45,14 +45,6 @@ func New(ctx context.Context) (*Queue, error) {
 	return &q, nil
 }
 
-// Enqueue a file to embed
-func (q *Queue) EnqueueEmbed(ctx context.Context, docID uuid.UUID) error {
-	return q.enqueue(ctx, StreamEmbed, map[string]any{
-		"kind":        "embed_document",
-		"document_id": docID.String(),
-	})
-}
-
 // EnqueueExtractQuestions asks a worker to read an uploaded RFP and create one
 // answer row per question found. It rides the slow stream because reading a
 // whole document must not delay chat replies.

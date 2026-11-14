@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"rfp-agent/internal/queue"
+	"rfp-agent/internal/events"
 	"rfp-agent/internal/storage"
 )
 
@@ -49,12 +49,12 @@ type Service interface {
 type service struct {
 	repo    Repository
 	storage *storage.Storage
-	queue   *queue.Queue
+	events  *events.Publisher
 }
 
 // Initializes a new repo service
-func NewService(repo Repository, st *storage.Storage, q *queue.Queue) Service {
-	return &service{repo: repo, storage: st, queue: q}
+func NewService(repo Repository, st *storage.Storage, ev *events.Publisher) Service {
+	return &service{repo: repo, storage: st, events: ev}
 }
 
 // CreateDocument inserts a pending row and returns it plus a presigned upload URL.
@@ -89,7 +89,7 @@ func (s *service) CreateDocument(ctx context.Context, workspaceID uuid.UUID, pro
 	return doc, uploadURL, nil
 }
 
-// ConfirmUpload verifies the object landed in storage, marks it uploaded, and queues embedding.
+// ConfirmUpload verifies the object landed in storage, marks it uploaded, and publishes the upload event that starts indexing.
 func (s *service) ConfirmUpload(ctx context.Context, id uuid.UUID) (*document, error) {
 	doc, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s *service) ConfirmUpload(ctx context.Context, id uuid.UUID) (*document, e
 		return nil, mapDBError(err)
 	}
 
-	if err := s.queue.EnqueueEmbed(ctx, id); err != nil {
+	if err := s.events.DocumentUploaded(ctx, id, doc.WorkspaceID); err != nil {
 		return nil, err
 	}
 

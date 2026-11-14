@@ -1,7 +1,7 @@
 """Central configuration for the Python workers.
 
 Reads the shared repo-root .env so the workers use the same Postgres / Redis /
-MinIO settings as the Go backend.
+Kafka / MinIO settings as the Go backend.
 """
 
 import os
@@ -19,17 +19,24 @@ REDIS_ADDR = os.getenv("REDIS_ADDR", "localhost:6379")
 REDIS_HOST, _, _port = REDIS_ADDR.partition(":")
 REDIS_PORT = int(_port or "6379")
 
+# --- Kafka ---
+KAFKA_BROKERS = os.getenv("KAFKA_BROKERS", "localhost:9092")
+TOPIC_DOCUMENT_UPLOADED = "documents.uploaded"
+# Index workers beyond this count sit idle: Kafka gives each partition to one
+# consumer in the group.
+TOPIC_PARTITIONS = 6
+
 # --- Streams / consumer group ---
 STREAM_EMBED = "embed"
 STREAM_GENERATE = "generate"
 CONSUMER_GROUP = "workers"
 
-# Which pipelines this process runs: "all", "embed", or "generate". Running one
-# process per type lets the slow embed work scale separately from chat replies.
+# Which pipelines this process runs: "all", "index", "embed", or "generate".
+# Running one process per type lets each stage scale on its own backlog.
 WORKER_TYPE = os.getenv("WORKER_TYPE", "all").lower()
 
 # Consumer names must be unique within a group so Redis can track which entries
-# each worker holds. Defaults to a random suffix; set WORKER_NAME to something
+# each worker holds (Kafka uses it as the client id). Defaults to a random suffix; set WORKER_NAME to something
 # stable (e.g. the container name) if you want to inspect pending entries later.
 WORKER_NAME = os.getenv("WORKER_NAME", "") or uuid.uuid4().hex[:6]
 
