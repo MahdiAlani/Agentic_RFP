@@ -3,12 +3,11 @@ import pytest
 from src import llm
 
 
-def test_chat_uses_mock_when_api_key_is_missing(monkeypatch):
+def test_chat_uses_the_offline_model_when_api_key_is_missing(monkeypatch):
     monkeypatch.setattr(llm, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(llm, "client", lambda: pytest.fail("called OpenAI without a key"))
 
-    assert llm.chat([{"role": "user", "content": "Hello"}]) == (
-        "Mock response (OPENAI_API_KEY is not configured)."
-    )
+    assert llm.chat([{"role": "user", "content": "Hello"}])
     assert llm.chat([], json_mode=True) == "{}"
 
 

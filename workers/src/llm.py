@@ -7,6 +7,7 @@ import re
 
 from openai import OpenAI
 
+from src import offline
 from src.config import OPENAI_API_KEY, OPENAI_CHAT_MODEL, OPENAI_EMBED_MODEL
 
 log = logging.getLogger("llm")
@@ -65,8 +66,8 @@ def chat(messages: list[dict], temperature: float = 0.2, json_mode: bool = False
     drafting model (OPENAI_CHAT_MODEL).
     """
     if not OPENAI_API_KEY:
-        log.info("OPENAI_API_KEY is not set; using deterministic mock chat")
-        return "{}" if json_mode else "Mock response (OPENAI_API_KEY is not configured)."
+        log.info("OPENAI_API_KEY is not set; using the offline stand-in model")
+        return offline.reply(messages, json_mode=json_mode)
 
     extra = {"response_format": {"type": "json_object"}} if json_mode else {}
     resp = client().chat.completions.create(
