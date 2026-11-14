@@ -105,7 +105,9 @@ services:
     # MinIO no longer publishes images to Docker Hub or quay.io; Chainguard
     # builds the same server from source. It defaults to a non-root user that
     # can't write the data volume, so run as root like the old image did.
-    image: cgr.dev/chainguard/minio:latest
+    # Chainguard's free tier only publishes :latest, so pin the digest that
+    # was tested; bump it deliberately.
+    image: cgr.dev/chainguard/minio:latest@sha256:2915cb406f38ed6ff9634de0a3e4a9423e2dda06a6f1aca18f8c968aa37a01f6
     user: root
     restart: unless-stopped
     command: server /data --console-address ":9001"

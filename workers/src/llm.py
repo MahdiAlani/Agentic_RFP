@@ -22,7 +22,10 @@ def client() -> OpenAI:
     if _client is None:
         if not OPENAI_API_KEY:
             raise RuntimeError("OPENAI_API_KEY is not set")
-        _client = OpenAI(api_key=OPENAI_API_KEY)
+        # The SDK retries rate limits, timeouts and 5xx with backoff. A document
+        # embeds as many parallel batches and one failed batch fails it, so
+        # allow more than the default 2 retries.
+        _client = OpenAI(api_key=OPENAI_API_KEY, max_retries=5)
     return _client
 
 

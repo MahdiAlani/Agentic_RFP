@@ -53,6 +53,16 @@ export default function DocumentsPanel({ workspace, project }) {
 
   useEffect(refresh, [workspace.id, project?.id])
 
+  // Indexing runs in the workers; poll quietly until every upload settles.
+  useEffect(() => {
+    if (!documents.some((d) => d.status === 'uploaded' || d.status === 'embedding')) return
+    const t = setTimeout(() => {
+      const load = project ? listProjectDocuments(project.id) : listDocuments(workspace.id)
+      load.then((ds) => setDocuments(ds || [])).catch(() => {})
+    }, 2000)
+    return () => clearTimeout(t)
+  }, [documents, workspace.id, project?.id])
+
   async function handleUpload(e) {
     e.preventDefault()
     setError('')
