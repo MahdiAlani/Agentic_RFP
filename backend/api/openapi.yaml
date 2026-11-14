@@ -540,7 +540,7 @@ paths:
   /readyz:
     get:
       tags: [Health]
-      summary: Readiness - Postgres, Redis and object storage all answer
+      summary: Readiness - Postgres, Redis, Kafka and object storage all answer
       security: []
       responses:
         "200": { $ref: "#/components/responses/Readiness" }
@@ -604,7 +604,7 @@ components:
         file_name: { type: string }
         file_key: { type: string }
         document_type: { type: string, examples: [rfp, other] }
-        status: { type: string, enum: [pending, uploaded, embedded, failed] }
+        status: { type: string, enum: [pending, uploaded, embedding, embedded, failed] }
         created_at: { type: string, format: date-time }
     Citation:
       type: object
